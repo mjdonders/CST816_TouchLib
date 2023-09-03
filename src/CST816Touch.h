@@ -1,7 +1,7 @@
 #ifndef _MDO_CST816Touch_H
 #define _MDO_CST816Touch_H
 
-#include <arduino.h>
+#include <Arduino.h>
 #include <Wire.h>
 
 namespace MDO {
