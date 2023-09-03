@@ -1,3 +1,4 @@
+#Ensure Arduino compliancy
 on: [push, pull_request]
 jobs:
   lint:
