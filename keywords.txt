@@ -1,0 +1,8 @@
+# Syntax Coloring Map
+# Datatypes (KEYWORD1)
+CST816Touch	KEYWORD1
+TouchSubscriberInterface	KEYWORD1
+
+# Methods and Functions (KEYWORD2)
+Control	KEYWORD2
+Init	KEYWORD2
