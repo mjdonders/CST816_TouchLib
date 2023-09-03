@@ -1,4 +1,3 @@
-#include <arduino.h>
 #include <Wire.h>
 
 #include <CST816_TouchLib.h>
