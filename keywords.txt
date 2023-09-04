@@ -4,5 +4,11 @@ CST816Touch	KEYWORD1
 TouchSubscriberInterface	KEYWORD1
 
 # Methods and Functions (KEYWORD2)
-Control	KEYWORD2
-Init	KEYWORD2
+control	KEYWORD2
+init	KEYWORD2
+hadGesture	KEYWORD2
+getLastGesture	KEYWORD2
+gestureIdToString	KEYWORD2
+
+hadTouch	KEYWORD2
+getLastTouchPosition	KEYWORD2
