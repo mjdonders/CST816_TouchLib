@@ -1,7 +1,7 @@
 #ifndef _MDO_CST816Touch_H
 #define _MDO_CST816Touch_H
 
-#include <Arduino.h>
+#include <arduino.h>
 #include <Wire.h>
 
 namespace MDO {
@@ -26,6 +26,7 @@ class CST816Touch {
 			GESTURE_DOWN,
 			GESTURE_UP,
 			GESTURE_TOUCH_BUTTON = 5,
+			//GESTURE_DOUBLE_CLICK = 0x0B,	//commented out, since it never happens on my LILYGO T-Display ESP32-S3's
 			GESTURE_LONG_PRESS = 0x0C
 		};
 		
