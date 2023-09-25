@@ -1,5 +1,4 @@
 #include <Wire.h>
-
 #include <CST816_TouchLib.h>
 
 #define PIN_TFT_POWER_ON                 15
@@ -51,4 +50,3 @@ void loop () {
 		Serial.println(")");
 	}	
 }
-
