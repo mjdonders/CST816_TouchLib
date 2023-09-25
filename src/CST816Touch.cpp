@@ -268,6 +268,7 @@ void CST816Touch::handleTouch() {
 	if (iGestureId > 0) {
 		gesture_t eGesture((gesture_t)iGestureId);
 		switch (eGesture) {
+			case GESTURE_NONE:			return "NONE";
 			case GESTURE_LEFT:			return "LEFT";
 			case GESTURE_RIGHT:			return "RIGHT";
 			case GESTURE_UP:			return "UP";
