@@ -1,5 +1,4 @@
 #include <Wire.h>
-
 #include <CST816_TouchLib.h>
 
 #include "TouchSubscriber.h"
@@ -41,4 +40,3 @@ void loop () {
 		Serial.println("Initiate a sleep failed");
 	}
 }
-
