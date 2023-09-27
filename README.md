@@ -3,6 +3,8 @@ This is a library for the touch part of the *LILYGO T-Display ESP32-S3* product.
 I'm not in any way linked to LILYGO, but I liked the physical product. Unfurtunately, the Arduino library support for the touch part could / should be improved. 
 Specifically the lack of gesture support (which the hardware does support): This library fixes that.
 
+Gesture types supported: RIGHT, LEFT, DOWN, UP, TOUCH_BUTTON, DOUBLE_CLICK, LONG_PRESS.
+
 ## Note that this library just handles the touch part, not the display itself
 
 All the defaults used are for the LILYGO T-Display ESP32-S3, so that should work in one go.

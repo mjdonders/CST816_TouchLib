@@ -26,6 +26,7 @@ class CST816Touch {
 			GESTURE_DOWN,
 			GESTURE_UP,
 			GESTURE_TOUCH_BUTTON = 5,
+			GESTURE_DOUBLE_CLICK,			//software determined, the hardware reported evenet seems absent
 			//GESTURE_DOUBLE_CLICK = 0x0B,	//commented out, since it never happens on my LILYGO T-Display ESP32-S3's
 			GESTURE_LONG_PRESS = 0x0C
 		};
@@ -37,18 +38,21 @@ class CST816Touch {
 		uint8_t						m_uiCTS816S_I2C_ADDRESS;	
 		uint8_t						m_ucAddress;
 		uint8_t						m_ucBuffer[CST816_TOUCH_BUF_SIZE];
+		uint8_t						m_ucPrevousBuffer[CST816_TOUCH_BUF_SIZE];
 		TouchSubscriberInterface*	m_pTouchSubscriber;
-
-		unsigned long				m_ulLastLongPress;
 		
 		unsigned long				m_ulLastGesture;	//when   - GESTURE
 		gesture_t					m_eLastGesture;		//what
 		int							m_iLastGestureX;	//where
 		int							m_iLastGestureY;	//where
 		
-		unsigned long				m_ulLastTouch;		//when   - TOUCH
+		unsigned long				m_ulLastTouch;		//when   - this is the last release of a touch, used to check double click
 		int							m_iLastTouchX;		//where
 		int							m_iLastTouchY;		//where
+		
+		bool						m_bNotifyReleaseOnly;
+		bool						m_bTouchConsumed;
+		bool						m_bGestureConsumed;
 	
 	private:
 		unsigned long	millisDiff(const unsigned long& ulStart, const unsigned long& ulEnd);
@@ -59,8 +63,8 @@ class CST816Touch {
 		
 		bool			read();
 		bool			hadPhysicalEvent();	//touch or gesture.. Basically: anything to report?
-		void			handleGesture();
-		void			handleTouch();
+		bool			handleGesture();
+		bool			handleTouch();
 	
 	public:
 		static String	gestureIdToString(int iGestureId);
@@ -69,12 +73,15 @@ class CST816Touch {
 		bool			hadTouch() const;
 		bool			hadGesture() const;
 		
-		bool			getFirmwareVersion(unsigned int& uiFW);
+		bool			getFirmwareVersion(unsigned long& ulFW);
 		void			setChipInDynamicMode();	//ensuring it listens to our commands..
 		bool			sleep();
-		void			printBuf();	//just for debug purposes.
+		void			printBuf(bool bWhenChangedOnly = false);	//just for debug purposes.
 		void			deInit();
 		bool			control();	//please call in loop()
+
+		void			setNotificationsOnAllEvents();		//get notifications on touch events and release event
+		void			setNotificationsOnReleaseOnly();	//get notifications on release event only - this is the default
 		
 		/**
 		 * init. For each PIN which this class should not [use / change]: set to -1

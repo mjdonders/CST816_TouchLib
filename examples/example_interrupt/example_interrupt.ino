@@ -15,6 +15,7 @@ void setup () {
     digitalWrite(PIN_TFT_POWER_ON, HIGH);	
 	
 	if (oTouch.init(Wire, &oTouchSubriber)) {
+		//oTouch.setNotificationsOnAllEvents();	//in case touch and release events are desired, comment out for touch-release events only
 		Serial.println("Touch screen initialization done");
 	} else {
 		Serial.println("Touch screen initialization failed..");

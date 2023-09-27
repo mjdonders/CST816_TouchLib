@@ -8,11 +8,11 @@ using namespace MDO;
 CST816Touch oTouch;
 
 void setup () {
-	Serial.begin(115200);				//so that DummyTouchSubscriber can use that to report
+	Serial.begin(115200);
 
-    pinMode(PIN_TFT_POWER_ON, OUTPUT);				//TFT poweron
-    digitalWrite(PIN_TFT_POWER_ON, HIGH);	
-	
+	pinMode(PIN_TFT_POWER_ON, OUTPUT);				//TFT poweron
+	digitalWrite(PIN_TFT_POWER_ON, HIGH);	
+
 	if (oTouch.init(Wire, 0)) {
 		Serial.println("Touch screen initialization done");
 	} else {

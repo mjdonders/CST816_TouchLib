@@ -13,6 +13,7 @@ const uint8_t TOUCH_REGISTER_WORK		= 0x00;
 const uint8_t TOUCH_REGISTER_GESTURE	= 0x01;	//defined by reverse engineering..
 const uint8_t TOUCH_REGISTER_NUMBER   	= 0x02;
 
+const uint8_t TOUCH_REGISTER_VERSION			= 0x15;
 const uint8_t TOUCH_REGISTER_FW_VERSION_LOW		= 0xA6;
 const uint8_t TOUCH_REGISTER_FW_VERSION_HIGH	= 0xA7;
 
@@ -92,7 +93,7 @@ bool CST816Touch::parseTouchEvent(int& x, int& y, bool& currentlyPressed) {
 	x = y;
 	y = swapToBeUseful;
 	
-	return true;
+	return m_ucBuffer[TOUCH_XH] != 0;	//was 'true'
 }
 
 /**
@@ -147,37 +148,43 @@ bool CST816Touch::readRegister(uint8_t ucRegister, uint8_t iRequestedSize) {
  * Private: reads the 'standard' CST816 register
  */
 bool CST816Touch::read() { 
-	memset(m_ucBuffer, 0, sizeof(m_ucBuffer));
-    return 	(readRegister((uint8_t)TOUCH_REGISTER_WORK, sizeof(m_ucBuffer))) &&
-			(m_ucBuffer[TOUCH_REGISTER_NUMBER] > 0);	//in reality, this will always be 1 at a proper read
+	bool bReadSuccess = readRegister((uint8_t)TOUCH_REGISTER_WORK, sizeof(m_ucBuffer));
+	bool bSomethingToReport = (bReadSuccess) && (memcmp(m_ucBuffer, m_ucPrevousBuffer, sizeof(m_ucBuffer)) != 0);
+	
+    return bSomethingToReport;
 }
 
 /**
- * Private: did we just had a touch event?
+ * Private: did we just had an event?
  * Either handles a interrupt from 'just now', or actively checks this
  */
 bool CST816Touch::hadPhysicalEvent() {
-	bool bTouchHappened = false;
+	bool bHadPhysicalEvent = false;
 	
 	if (g_bTouchInterrupt) {
 		g_bTouchInterrupt = false;
-		bTouchHappened = read();	
+		bHadPhysicalEvent = read();
 	}
 	
-	if (m_iPIN_INTERRUPT == -1) {
-		//non-interrupt mode..
-		bTouchHappened = read();
-	}
-	return bTouchHappened;
+//removed non-interrupt mode, which is just not stable enough (caused by the chip going back in sleep mode)
+//	if ((m_iPIN_INTERRUPT == -1) && (!bHadPhysicalEvent)) {
+//		//non-interrupt mode..
+//		bHadPhysicalEvent = read();
+//	}
+	return bHadPhysicalEvent;
 }
 
 /**
  * Private: handle a gesture
+ * returns true when something was (or should be) reported
  */
-void CST816Touch::handleGesture() {
+bool CST816Touch::handleGesture() {
 	
 	gesture_t eGesture = (gesture_t)m_ucBuffer[TOUCH_REGISTER_GESTURE];
-	const int iGestureFilterDelayTime = 100;
+	bool bReportAnEvent = false;
+	const int iGestureFilterDelayTime = 20;
+
+	//printBuf(true);
 
 	int x = 0;
 	int y = 0;
@@ -186,79 +193,114 @@ void CST816Touch::handleGesture() {
 	if (bCoordinatesAreValid) {
 		m_iLastGestureX = x;
 		m_iLastGestureY = y;
+	} else {
+#ifdef CST816_TOUCH_LIB_DEBUG
+		Serial.println("handleGesture - not handling this");
+#endif
+		return false;
 	}
 
-	
-	//specific handling for the long press..
-	if (eGesture == GESTURE_LONG_PRESS) {
-		m_ulLastLongPress = millis();
-		
-	} else if (eGesture == GESTURE_TOUCH_BUTTON) {
+	if (eGesture == GESTURE_TOUCH_BUTTON) {
 		//also this requires some specifics.. :-(
 		//sometimes this is triggered when you're just touching the center of the screen
 		//filter that by an additional position check
-		if (bCoordinatesAreValid) {
-			if ((x == TOUCH_BUTTON_X) && (y == TOUCH_BUTTON_Y)) {
-				
-				if (millisDiff(m_ulLastGesture) > iGestureFilterDelayTime) {
-					m_eLastGesture = eGesture;
-					if (m_pTouchSubscriber != 0) {
-						m_pTouchSubscriber->gestureNotification(this, m_eLastGesture);
-					}
-				}
-				m_ulLastGesture = millis();
+		if ((x == TOUCH_BUTTON_X) && (y == TOUCH_BUTTON_Y)) {
+			
+			if (millisDiff(m_ulLastGesture) > iGestureFilterDelayTime) {
+				m_eLastGesture = eGesture;
+				bReportAnEvent = ((m_bNotifyReleaseOnly == false) ||					//if we want to know all event types
+								  ((m_bNotifyReleaseOnly) && (!currentlyPressed)));	//or, on a relevant event
+
 			}
 		}
 	} else {
+
+		if ((eGesture != GESTURE_RIGHT) && (eGesture != GESTURE_LEFT) && (eGesture != GESTURE_DOWN) && (eGesture != GESTURE_UP) && (eGesture != GESTURE_TOUCH_BUTTON) && (eGesture != GESTURE_LONG_PRESS) && (eGesture != GESTURE_DOUBLE_CLICK))  {
 #ifdef CST816_TOUCH_LIB_DEBUG
-		if ((eGesture != GESTURE_RIGHT) && (eGesture != GESTURE_LEFT) && (eGesture != GESTURE_DOWN) && (eGesture != GESTURE_UP) && (eGesture != GESTURE_TOUCH_BUTTON) && (eGesture != GESTURE_LONG_PRESS))  {
 			Serial.println("Unkown gesture: ");
 			printBuf();
-		}
 #endif
-		if (millisDiff(m_ulLastGesture) > iGestureFilterDelayTime) {
+		} else {
+			//ok, good: we have a supported gesture
 			m_eLastGesture = eGesture;
-			if (m_pTouchSubscriber != 0) {
-				m_pTouchSubscriber->gestureNotification(this, m_eLastGesture);
+
+			if (millisDiff(m_ulLastGesture) > iGestureFilterDelayTime) {
+				bReportAnEvent = ((m_bNotifyReleaseOnly == false) ||				//if we want to know all event types
+								  ((m_bNotifyReleaseOnly) && (!currentlyPressed)));	//or, on a relevant event
 			}
-			m_ulLastGesture = millis();
 		}
 	}
+	
+	
+	if (bReportAnEvent) {
+		m_ulLastGesture = millis();
+		m_bGestureConsumed = false;
+		if (m_pTouchSubscriber != 0) {
+			m_pTouchSubscriber->gestureNotification(this, m_eLastGesture, !currentlyPressed);
+		}
+	}
+
+	return bReportAnEvent;
 }
 
 /**
  * Private: Handle a touch event
  */
-void CST816Touch::handleTouch() {
+bool CST816Touch::handleTouch() {
 	
-	if (millisDiff(m_ulLastTouch) > 50) {
-		int x=0;
-		int y=0;
-		bool currentlyPressed = false;
-		if (parseTouchEvent(x, y, currentlyPressed)) {
-			if (!currentlyPressed) {
-				//notify on release only
-								
-				if ((x == TOUCH_BUTTON_X) && (y == TOUCH_BUTTON_Y)) {
-					m_eLastGesture = GESTURE_TOUCH_BUTTON;
-					m_iLastGestureX = x;
-					m_iLastGestureY = y;
+	bool bReportAnEvent = false;
+	
+	int x=0;
+	int y=0;
+	bool currentlyPressed = false;
+	if (parseTouchEvent(x, y, currentlyPressed)) {
+	
+		bReportAnEvent = ((m_bNotifyReleaseOnly == false) ||				//if we want to know all event types
+						  ((m_bNotifyReleaseOnly) && (!currentlyPressed)));	//or, on a relevant event
 
-					//sometime a touch on the touch-button is not registered as such.. Handle this here for a more consitent interfase.
-					if (m_pTouchSubscriber != 0) {
-						m_pTouchSubscriber->gestureNotification(this, m_eLastGesture);
-					}
-				} else {
-					m_iLastTouchX = x;
-					m_iLastTouchY = y;
-					if (m_pTouchSubscriber != 0) {
-						m_pTouchSubscriber->touchNotification(this, m_iLastTouchX, m_iLastTouchY);
-					}
+		if ((x == TOUCH_BUTTON_X) && (y == TOUCH_BUTTON_Y)) {
+			//sometimes a touch on the touch-button is not registered as such.. Handle this here for a more consitent interfase.
+			m_eLastGesture = GESTURE_TOUCH_BUTTON;
+			m_iLastGestureX = x;
+			m_iLastGestureY = y;
+
+			if (bReportAnEvent) {
+				m_bGestureConsumed = false;
+				if (m_pTouchSubscriber != 0) {
+					m_pTouchSubscriber->gestureNotification(this, m_eLastGesture, !currentlyPressed);
 				}
 			}
+		} else {
+			//not a touch_button, but a normal touch
+			m_iLastTouchX = x;
+			m_iLastTouchY = y;
+			if (bReportAnEvent) {
+				m_bTouchConsumed = false;
+				if (m_pTouchSubscriber != 0) {
+					m_pTouchSubscriber->touchNotification(this, m_iLastTouchX, m_iLastTouchY, !currentlyPressed);
+				}
+			}
+			
+			if (!currentlyPressed) {
+				//check if we can register this as a double click
+				if (millisDiff(m_ulLastTouch) < 500) {
+					m_bGestureConsumed = false;
+					m_eLastGesture = GESTURE_DOUBLE_CLICK;
+					m_iLastGestureX = x;
+					m_iLastGestureY = y;
+					
+					if (m_pTouchSubscriber != 0) {
+						//using the same time as Microsoft:
+						//https://en.wikipedia.org/wiki/Double-click#:~:text=rely%20upon%20it.-,Speed%20and%20timing,basis%20for%20other%20timed%20actions.	
+						m_pTouchSubscriber->gestureNotification(this, m_eLastGesture, !currentlyPressed);
+					}
+				}				
+				m_ulLastTouch = millis();
+			}
 		}
-		m_ulLastTouch = millis();
-	}
+	}	
+	
+	return bReportAnEvent;
 }
 
 /**
@@ -274,6 +316,7 @@ void CST816Touch::handleTouch() {
 			case GESTURE_UP:			return "UP";
 			case GESTURE_DOWN:			return "DOWN";
 			case GESTURE_TOUCH_BUTTON:	return "TOUCH_BUTTON";
+			case GESTURE_DOUBLE_CLICK:	return "DOUBLE_CLICK";
 			case GESTURE_LONG_PRESS:	return "LONG_PRESS";
 		}
 	}
@@ -286,11 +329,15 @@ void CST816Touch::handleTouch() {
  * When x=y=0, please assume no touch ever happened.
  */
 void CST816Touch::getLastTouchPosition(int& x, int& y) {
-	x = m_iLastTouchX;
-	y = m_iLastTouchY;
+	if (!m_bTouchConsumed) {
+		m_bTouchConsumed = true;
+		x = m_iLastTouchX;
+		y = m_iLastTouchY;
+	} else {
+		x = 0;
+		y = 0;
+	}
 	
-	m_iLastTouchX = 0;
-	m_iLastTouchY = 0;
 }
 
 /**
@@ -299,45 +346,59 @@ void CST816Touch::getLastTouchPosition(int& x, int& y) {
  * When x=y=0, please assume no gesture ever happened.
  */
 void CST816Touch::getLastGesture(gesture_t& gesture, int& x, int& y) {
-	x = m_iLastGestureX;
-	y = m_iLastGestureY;
-	gesture = m_eLastGesture;
-	
-	m_eLastGesture	= GESTURE_NONE;
-	m_iLastGestureX = 0;
-	m_iLastGestureY = 0;
+	if (!m_bGestureConsumed) {
+		m_bGestureConsumed = true;
+		x = m_iLastGestureX;
+		y = m_iLastGestureY;
+		gesture = m_eLastGesture;
+	} else {
+		gesture	= GESTURE_NONE;
+		x = 0;
+		y = 0;
+	}
 }
 
 bool CST816Touch::hadTouch() const {
-	return (m_iLastTouchX != 0) && (m_iLastTouchY != 0);
+	return (m_iLastTouchX != 0) && (m_iLastTouchY != 0) && (!m_bTouchConsumed);
 }
 
 bool CST816Touch::hadGesture() const {
-	return m_eLastGesture != GESTURE_NONE;
+	return (m_eLastGesture != GESTURE_NONE) && (!m_bGestureConsumed);
 }
 
 /**
  * Gets the firmware version.
  * Can be used to check CST816 availability
  */
-bool CST816Touch::getFirmwareVersion(unsigned int& uiFW) {
+bool CST816Touch::getFirmwareVersion(unsigned long& ulFW) {
 	bool bOk = false;
-	uiFW = 0;
+	ulFW = 0;
 	
 	setChipInDynamicMode();
 	
 #ifdef CST816_TOUCH_LIB_DEBUG
 	Serial.println("Checking touch firmware..");
 #endif	
-	if (readRegister(TOUCH_REGISTER_FW_VERSION_HIGH, 1)) {
-		uiFW = m_ucBuffer[0];
-		uiFW <<= 8;
+
+	bOk = readRegister(TOUCH_REGISTER_FW_VERSION_HIGH, 3);
+	if (bOk) {
+		ulFW = m_ucBuffer[0];
+		ulFW <<= 8;
+		ulFW |= m_ucBuffer[1];
+		ulFW <<= 8;
+		ulFW |= m_ucBuffer[2];
+	}
 		
-		if (readRegister(TOUCH_REGISTER_FW_VERSION_LOW, 1)) { 
-			uiFW |= m_ucBuffer[0];
-			bOk = true;
-		}
-	} else {
+	//works, but always provide 0..
+	//bOk = readRegister(TOUCH_REGISTER_FW_VERSION_LOW, 1);
+
+	if (bOk) {
+		ulFW <<= 8;
+		bOk = readRegister(TOUCH_REGISTER_VERSION, 1); 
+		ulFW |= m_ucBuffer[0];
+	}
+
+	if (!bOk) {
 #ifdef CST816_TOUCH_LIB_DEBUG
 		Serial.println("Checking touch firmware failed");
 #endif
@@ -397,17 +458,25 @@ bool CST816Touch::sleep() {
  * Debug method only: print internal buffer.
  * Is useful only after a Read, typically.
  */
-void CST816Touch::printBuf() {
-	for (int i=0; i< sizeof(m_ucBuffer); i++) {
-		if (i !=0) {
-			Serial.print(", ");
+void CST816Touch::printBuf(bool bWhenChangedOnly /* = false*/) {
+	
+	static uint8_t ucOldBuffer[sizeof(m_ucBuffer)];
+	
+	if ((!bWhenChangedOnly) || (memcmp(m_ucBuffer, ucOldBuffer, sizeof(m_ucBuffer)) != 0)) {
+	
+		for (int i=0; i< sizeof(m_ucBuffer); i++) {
+			if (i !=0) {
+				Serial.print(", ");
+			}
+			uint8_t c = m_ucBuffer[i];
+			Serial.print("0x");
+			Serial.print(c < 16 ? "0" : "");
+			Serial.print(c, HEX);
 		}
-		uint8_t c = m_ucBuffer[i];
-		Serial.print("0x");
-		Serial.print(c < 16 ? "0" : "");
-		Serial.print(c, HEX);
+		Serial.println();
 	}
-	Serial.println();
+	
+	memcpy(ucOldBuffer, m_ucBuffer, sizeof(m_ucBuffer));
 }
 
 /**
@@ -419,7 +488,10 @@ void CST816Touch::deInit() {
 	}
 	m_pI2C = 0;
 	memset(m_ucBuffer, 0, sizeof(m_ucBuffer));
+	memset(m_ucPrevousBuffer, 0, sizeof(m_ucPrevousBuffer));
 	m_pTouchSubscriber = 0;
+	m_bTouchConsumed = true;
+	m_bGestureConsumed = true;
 }
 
 /**
@@ -428,44 +500,52 @@ void CST816Touch::deInit() {
  * All of this return value checking, hadTouch & hadGesture are not needed when the callback mechanism is used.
  */
 bool CST816Touch::control() {
-	bool bTouchHappened = hadPhysicalEvent();
-		
-	if (bTouchHappened) {
+	bool bHadPhysicalEvent = hadPhysicalEvent();
+	bool bReportAnEvent = false;
+	
+	if (bHadPhysicalEvent) {
 #ifdef CST816_TOUCH_LIB_DEBUG
-		if (m_pTouchSubscriber == 0) {
-			Serial.println("Touch event");
-		}
 		//PrintBuf();
 #endif
 				
 		//check gesture first
 		if (m_ucBuffer[TOUCH_REGISTER_GESTURE] != 0x00) {
-			handleGesture();
+			bReportAnEvent = handleGesture();
 		} else {
-			handleTouch();
+			bReportAnEvent = handleTouch();
 		}
 		//ensure we never re-parse the same
-		memset(m_ucBuffer, 0, sizeof(m_ucBuffer));
-	} else {
-		//no touch happened just now
-		//
-		//however, a long press is only indicate by the press, not the release..
-		//check if that was the case
-		if ((m_ulLastLongPress != 0) && (millisDiff(m_ulLastLongPress) > 50)) {
-			m_eLastGesture = GESTURE_LONG_PRESS;
-			if (m_pTouchSubscriber != 0) {
-				m_pTouchSubscriber->gestureNotification(this, m_eLastGesture);
-			}
-			m_ulLastLongPress = 0;
-		}	
+		memcpy(m_ucPrevousBuffer, m_ucBuffer, sizeof(m_ucBuffer));		
 	}
 	
-	return bTouchHappened;
+	return bReportAnEvent;
 }
+
+/**
+ * get notifications on touch events and release event
+ * Note that this is only supported when a TouchSubscriberInterface has been provided.
+ */
+void CST816Touch::setNotificationsOnAllEvents() {
+
+	if (m_pTouchSubscriber == 0) {
+		Serial.println("Setting notifications on touch-events and release-events only works in the callback enabled scenario");
+	} else {
+		m_bNotifyReleaseOnly = false;
+	}
+}
+
+/**
+ * get notifications on release event only - this is the default
+ */
+void CST816Touch::setNotificationsOnReleaseOnly() {
+	m_bNotifyReleaseOnly = true;
+}
+
 
 /**
  * Initialize: this is a mandatory call to be made 
  * For each PIN which this class should not use / change: set to -1
+ * The interrupt pin is mandatory for proper usage.
  * return false on issues
  */
 bool CST816Touch::init(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*= 0*/, 
@@ -506,11 +586,11 @@ bool CST816Touch::init(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*
 	}
 	
 	if (bOk) {
-		unsigned int uiFW = 0;
-		bOk = getFirmwareVersion(uiFW);
+		unsigned long ulFW = 0;
+		bOk = getFirmwareVersion(ulFW);
 #ifdef CST816_TOUCH_LIB_DEBUG		
 		Serial.print("Firmware: ");
-		Serial.println(uiFW, HEX);
+		Serial.println(ulFW, HEX);
 #endif
 	}
 	
@@ -536,8 +616,6 @@ CST816Touch::CST816Touch() {
 	memset(m_ucBuffer, 0, sizeof(m_ucBuffer));
 	m_pTouchSubscriber = 0;
 	
-	m_ulLastLongPress = 0;
-	
 	m_ulLastGesture = 0;
 	m_eLastGesture	= GESTURE_NONE;
 	m_iLastGestureX = 0;
@@ -546,6 +624,10 @@ CST816Touch::CST816Touch() {
 	m_ulLastTouch = 0;
 	m_iLastTouchX = 0;
 	m_iLastTouchY = 0;
+	
+	m_bNotifyReleaseOnly = true;
+	m_bTouchConsumed = true;
+	m_bGestureConsumed = true;
 }
 
 CST816Touch::~CST816Touch() {
