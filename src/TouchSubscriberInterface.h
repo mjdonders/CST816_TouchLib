@@ -17,10 +17,12 @@ class TouchSubscriberInterface {
 	
 	public:
 		//will retreive detected gestures
-		virtual void	gestureNotification(CST816Touch* pTouch, int iGestureId) = 0;	
+		//bReleasedScreen indicates if the screen is currently released, or currently being touched
+		virtual void	gestureNotification(CST816Touch* pTouch, int iGestureId, bool bReleasedScreen) = 0;	
 		
 		//will retrieve detected touch events
-		virtual void	touchNotification(CST816Touch* pTouch, int x, int y) = 0;
+		//bReleasedScreen indicates if the screen is currently released, or currently being touched
+		virtual void	touchNotification(CST816Touch* pTouch, int x, int y, bool bReleasedScreen) = 0;
 };
 
 }	//namespace end

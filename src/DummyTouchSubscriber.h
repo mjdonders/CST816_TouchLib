@@ -17,10 +17,10 @@ class DummyTouchSubscriber: public TouchSubscriberInterface {
 	
 	public:
 		//the pointer is the 'this' from the CST816Touch source 
-		virtual void	gestureNotification(CST816Touch* pTouch, int iGestureId);	
+		virtual void	gestureNotification(CST816Touch* pTouch, int iGestureId, bool bReleasedScreen);
 		
 		//the pointer is the 'this' from the CST816Touch source 
-		virtual void	touchNotification(CST816Touch* pTouch, int x, int y);
+		virtual void	touchNotification(CST816Touch* pTouch, int x, int y, bool bReleasedScreen);
 	
 		DummyTouchSubscriber();
 		virtual ~DummyTouchSubscriber();

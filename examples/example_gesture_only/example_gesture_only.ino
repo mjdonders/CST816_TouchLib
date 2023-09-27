@@ -18,6 +18,7 @@ void setup () {
 	
 	if (oTouch.init(Wire, &oTouchSubriber)) {
 		Serial.println("Touch screen initialization done");
+		//oTouch.setNotificationsOnAllEvents();	//in case touch and release events are desired, comment out for touch-release events only
 	} else {
 		Serial.println("Touch screen initialization failed..");
 	}
@@ -26,7 +27,7 @@ void setup () {
 void loop () {
 	
 	unsigned long ulStart = millis();
-	while(millis() - ulStart < 20000) {	//Handle gestures for 20 seconds
+	while(millis() - ulStart < 20000) {	//Handle gestures for 20 seconds, just for demo
 		oTouch.control();
 	}
 	
