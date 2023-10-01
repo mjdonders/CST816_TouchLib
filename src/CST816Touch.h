@@ -84,10 +84,18 @@ class CST816Touch {
 		void			setNotificationsOnReleaseOnly();	//get notifications on release event only - this is the default
 		
 		/**
-		 * init. For each PIN which this class should not [use / change]: set to -1
+		 * initialize. For each PIN which this class should not [use / change]: set to -1
+		 * @deprecated, based on the Wire initialization, which does not belong in a library..
+		 * WILL initialize Wire. Use 'begin' if this is not desired
 		 * return false on issues
 		 */
 		bool			init(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber = 0, int PIN_INTERRUPT = 16, int I2C_SDA = 18, int I2C_SCL = 17, uint8_t CTS816S_I2C_ADDRESS = 0x15, int PIN_RESET = 21);
+		
+		/**
+		 * begin / initialize this class/library
+		 * return false on issues
+		 */
+		bool			begin(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber = 0, int PIN_INTERRUPT = 16, uint8_t CTS816S_I2C_ADDRESS = 0x15, int PIN_RESET = 21);
 
 	
 		CST816Touch();
