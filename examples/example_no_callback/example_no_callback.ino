@@ -1,7 +1,9 @@
 #include <Wire.h>
 #include <CST816_TouchLib.h>
 
-#define PIN_TFT_POWER_ON                 15
+#define PIN_TFT_POWER_ON	15
+#define I2C_SDA				18
+#define I2C_SCL				17
 
 using namespace MDO;
 
@@ -13,7 +15,10 @@ void setup () {
 	pinMode(PIN_TFT_POWER_ON, OUTPUT);				//TFT poweron
 	digitalWrite(PIN_TFT_POWER_ON, HIGH);	
 
-	if (oTouch.init(Wire, 0)) {
+	Wire.begin(I2C_SDA, I2C_SCL);
+	Wire.setClock(400000);	//For reliable communication, it is recommended to use a *maximum* communication rate of 400Kbps
+
+	if (oTouch.begin(Wire)) {
 		Serial.println("Touch screen initialization done");
 	} else {
 		Serial.println("Touch screen initialization failed..");

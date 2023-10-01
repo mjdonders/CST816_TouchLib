@@ -4,7 +4,6 @@
 //if you like, enable this for debug serial messages
 //I tried this from the INO file, but could not get that to work..
 //#define CST816_TOUCH_LIB_DEBUG
-//#include <mdomisc.h>
 
 //avoid the defines, as per https://docs.arduino.cc/learn/contributions/arduino-writing-style-guide#variables
 const uint8_t TOUCH_CMD_SLEEP 			= 0x03;
@@ -543,7 +542,8 @@ void CST816Touch::setNotificationsOnReleaseOnly() {
 
 
 /**
- * Initialize: this is a mandatory call to be made 
+ * Initialize: this is a mandatory call to be made
+ * @deprecated, since this initializes Wire and it's not the Ardunio recommended name
  * For each PIN which this class should not use / change: set to -1
  * The interrupt pin is mandatory for proper usage.
  * return false on issues
@@ -554,14 +554,31 @@ bool CST816Touch::init(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*
 							int I2C_SCL /*= 17*/, 
 							uint8_t CTS816S_I2C_ADDRESS /*= 0x15*/, 							
 							int PIN_RESET /*= 21*/) {	//note that this is a mandatory PIN, so don't set this to -1
-	m_pI2C = &w;
-	bool bOk = false;
-	if (m_pI2C != 0) {
+	
+	bool bOk = begin(w, pTouchSubscriber, PIN_INTERRUPT, CTS816S_I2C_ADDRESS, PIN_RESET);
+
+	if ((bOk) && (m_pI2C != 0)) {
 		m_pI2C->begin(I2C_SDA, I2C_SCL);
-		m_pI2C->setClock(400000);	//For reliable communication, it is recommended to use a maximum communication rate of 400Kbps
-		bOk = true;		
+		m_pI2C->setClock(400000);	//For reliable communication, it is recommended to use a maximum communication rate of 400Kbps	
 	}
-		
+
+	return bOk;
+}
+
+/**
+ * begin: this is a mandatory call to be made.
+ * Please ensure that Wire has been initialized before this call, using the begin method
+ * For each PIN which this class should not use / change: set to -1
+ * The interrupt pin is mandatory for proper usage.
+ * return false on issues
+ */
+bool CST816Touch::begin(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*= 0*/, 
+							int PIN_INTERRUPT 			/*= 16 */, 
+							uint8_t CTS816S_I2C_ADDRESS /*= 0x15*/, 							
+							int PIN_RESET 				/*= 21*/) {	//note that this is a mandatory PIN, so don't set this to -1
+	m_pI2C = &w;
+	bool bOk = m_pI2C != 0;
+	
 	m_ucAddress = CTS816S_I2C_ADDRESS;
 	m_iPIN_RESET = PIN_RESET;
 	m_iPIN_INTERRUPT = PIN_INTERRUPT;
@@ -605,7 +622,6 @@ bool CST816Touch::init(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*
 
 	return bOk;
 }
-		
 
 CST816Touch::CST816Touch() {
 	m_pI2C = 0;
