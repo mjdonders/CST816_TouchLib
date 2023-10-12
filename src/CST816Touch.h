@@ -45,6 +45,7 @@ class CST816Touch {
 		};
 		
 		enum touch_opering_mode_t {
+			TOUCH_MODE_DEFAULT,			//the mode right after a reset, not actually used
 			TOUCH_MODE_FAST,			//quickest mode, double click and long press are software based, double click triggers 2 touch events AND a gesture event
 			TOUCH_MODE_HARDWARE			//all fully executed in hardware, long press takes a lot longer, double click however only gives a single gesture event
 		};
@@ -96,6 +97,7 @@ class CST816Touch {
 	public:
 		static String	deviceTypeToString(device_type_t eDeviceType);
 		static String	gestureIdToString(int iGestureId);
+		static String	operatingModeToString(touch_opering_mode_t eOperatingMode);
 		void			getLastTouchPosition(int& x, int& y);
 		void			getLastGesture(gesture_t& gesture, int& x, int& y);
 		bool			hadTouch() const;
