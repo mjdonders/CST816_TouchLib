@@ -1,5 +1,6 @@
 #include "CST816Touch.h"
 #include "TouchSubscriberInterface.h"
+#include <limits.h>
 
 //if you like, enable this for debug serial messages
 //I tried this from the INO file, but could not get that to work..
