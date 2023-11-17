@@ -18,8 +18,9 @@ An ESP32 deep sleep is also possible with a touch-based wakeup, please see examp
 For the CST816 sleep to work, it needs to be on when the command is issue, the above example shows that as well.
 Note: when using this example, ensure the screen is touched just before the a new program is flashed, to ensure that the ESP32-S3 is awake. 
 
-This library was created without official documentation. The documents I could find do not provide any info on registers, exact timing, etc.
-If someone could point me to that, this library can most likely be improved..
+This library was created without official documentation. The documentation on registers is not very comprehensive and can be found within the
+the documentation on registers is not very comprehensive. Some hints are available at
+<https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/datasheet/CST816S%E5%AF%84%E5%AD%98%E5%99%A8%E8%AF%B4%E6%98%8E-20190508.pdf>
 
 ## Usage
 Typically, start with the method *begin*
