@@ -5,7 +5,7 @@ Specifically the lack of gesture support: This library fixes that.
 
 Gesture types supported: RIGHT, LEFT, DOWN, UP, TOUCH_BUTTON, DOUBLE_CLICK, LONG_PRESS.
 
-## Note that this library just handles the touch part, not the display itself
+**Note that this library just handles the touch part, not the display itself**
 
 All the defaults used are for the LILYGO T-Display ESP32-S3, so that should work in one go.
 The examples also show how to use the T-Display S3 AMOLED: there are some hardware differences like pins and resolution.
@@ -22,7 +22,8 @@ Note: when using this example, ensure the screen is touched just before the a ne
 ## Usage
 There are two main classes: 
  - CST816Touch_HWMode for the hardware based operation and
- - CST816Touch_SWMode for the (mainly) software based operation
+ - CST816Touch_SWMode for the (mainly) software based operation.
+
 Typically, start with initialize Wire and a call to  *begin*.
 The CST816Touch_SWMode allows to use the following TouchScreenEventProcessor's (all optional):
  - DoubleClickFactory, this is a software based double click implementation. Since this does not cache/buffer anything, it's quick (from a response point of view). That however does mean that only after the second click a double click gesture can be generated. Meaning that a double click even always receives a touch event first.
@@ -36,7 +37,7 @@ See *TouchScreenEventCache::getInstance*.
 
 Please don't forget to call *control* regularly (in *loop*). See the examples.
 
-### Sleep behaviour:
+## Sleep behaviour
 Note that by default the chip goes in a standby/sleep mode (which it leaves on physical touch events).
 In such a standby/sleep save mode, it will **not respond to a command**.
 When the program only interacts with the CST816 chip during initialization, or based on a touch: this scenario will happen.
@@ -51,6 +52,7 @@ Right after the call to *begin*, *setAutoSleep* to false can be used. However si
 - *getFirmwareVersion*, check the firmware version
 - *sleep*, might be useful when *setAutoSleep* has been set to false
 - *resetChip*, used to ensure that the chip in auto-sleep-mode is ready to receive commands (don't forget bRestoreState in this case). Only does something when the reset pin is provided in *begin*.
+
 
 
 Compared to the previous version of the library, the following have been removed (externally):
