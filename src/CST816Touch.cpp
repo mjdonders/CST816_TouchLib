@@ -1,50 +1,111 @@
 #include "CST816Touch.h"
-#include "TouchSubscriberInterface.h"
-#include <limits.h>
+#include "Tools.h"
+#include "TouchScreenObserver.h"
 
-//if you like, enable this for debug serial messages
-//I tried this from the INO file, but could not get that to work..
-//#define CST816_TOUCH_LIB_DEBUG
-
-#ifdef CST816_TOUCH_LIB_DEBUG
-#define CST816_TOUCH_DEBUG_PRINT(str) Serial.print(str)
-#else
-#define CST816_TOUCH_DEBUG_PRINT(str)
-#endif
-
-#ifdef CST816_TOUCH_LIB_DEBUG
-#define CST816_TOUCH_DEBUG_PRINTLN(str) Serial.println(str)
-#else 
-#define CST816_TOUCH_DEBUG_PRINTLN(str)
-#endif
+#include "DebugMsg.h"
 
 //avoid the defines, as per https://docs.arduino.cc/learn/contributions/arduino-writing-style-guide#variables
-const uint8_t TOUCH_CMD_SLEEP 			= 0x03;
-const uint8_t TOUCH_REGISTER_SLEEP		= 0xA5;
-const uint8_t TOUCH_REGISTER_WORK		= 0x00;
-const uint8_t TOUCH_INDEX_GESTURE		= 0x01;	//defined by reverse engineering..
-const uint8_t TOUCH_REGISTER_NUMBER   	= 0x02;
+const uint8_t CTS816_I2C_ADDRESS				= 0x15;
+const uint8_t TOUCH_REGISTER_SLEEP				= 0xA5;
+const uint8_t TOUCH_CMD_SLEEP 					= 0x03;
 
-const uint8_t TOUCH_IRQ_EN_TOUCH		= 0x40;	//gives a lot of events, in itself only provide touch (TOUCH_CONTACT) info. also include gesture info
-const uint8_t TOUCH_IRQ_EN_CHANGE		= 0x20;	//gives or adds the release (TOUCH_UP) info
-const uint8_t TOUCH_IRQ_EN_MOTION		= 0x10;	//seems to add the GESTURE_TOUCH_BUTTON events, add long press-while-still-touched gestures
-const uint8_t TOUCH_IRQ_EN_LONGPRESS	= 0x01;	//seems to do nothing..?
+const uint8_t TOUCH_REGISTER_WORK				= 0x00;
+const uint8_t TOUCH_REGISTER_GESTURE			= 0x01;
+const uint8_t TOUCH_REGISTER_FINGER_NUMBER  	= 0x02;		//the finger number: either 0 (no finger) or 1 (a finger)
+const uint8_t TOUCH_REGISTER_TOUCH_XH			= 0x03;
+const uint8_t TOUCH_REGISTER_TOUCH_XL			= 0x04;
+const uint8_t TOUCH_REGISTER_TOUCH_YH			= 0x05;
+const uint8_t TOUCH_REGISTER_TOUCH_YL			= 0x06;
 
-const uint8_t MOTION_MASK_CONTINUOUS_LEFT_RIGHT	= 0x04;
-const uint8_t MOTION_MASK_CONTINUOUS_UP_DOWN	= 0x02;
+const uint8_t TOUCH_REGISTER_BPC0H				= 0xB0;	//not sure what this is for though..	BPC0[15:8]
+const uint8_t TOUCH_REGISTER_BPC0L				= 0xB1;	//not sure what this is for though..	BPC0[7:0]
+const uint8_t TOUCH_REGISTER_BPC1H				= 0xB2;	//not sure what this is for though..	BPC1[15:8]
+const uint8_t TOUCH_REGISTER_BPC1L				= 0xB3;	//not sure what this is for though..	BPC1[7:0]
+
+//const uint8_t TOUCH_REGISTER_VERSION			= 0x15;		//not sure where I got this from, but seems to be nothing
+const uint8_t TOUCH_REGISTER_CHIP_ID			= 0xA7;		//chip ID (/model) (1 byte)
+const uint8_t TOUCH_REGISTER_PROJ_ID			= 0xA8;		//project number (1 byte)
+const uint8_t TOUCH_REGISTER_FW_VERSION			= 0xA9;		//firmware version
+
+const uint8_t TOUCH_REGISTER_MOTION_MASK		= 0xEC;		//motion mask register
+const uint8_t MOTION_MASK_CONTINUOUS_LEFT_RIGHT	= 0x04;	//Enables continuous left and right sliding actions
+const uint8_t MOTION_MASK_CONTINUOUS_UP_DOWN	= 0x02;	//Enable continuous up and down sliding actions
 const uint8_t MOTION_MASK_DOUBLE_CLICK			= 0x01;	//add hardware based double click
 
-const uint8_t TOUCH_REGISTER_VERSION		= 0x15;
-const uint8_t TOUCH_REGISTER_CHIP_ID		= 0xA7;		//chip ID
-const uint8_t TOUCH_REGISTER_FW_VERSION		= 0xA9;		//firmware version
-const uint8_t TOUCH_REGISTER_MOTION_MASK	= 0xEC;		//motion mask register
-const uint8_t TOUCH_REGISTER_IRQ_CTL		= 0xFA;		//interrupt control
-const uint8_t TOUCH_REGISTER_AUTOSLEEP		= 0xFE;		//can be used to disable auto sleep, might be quicker (?) but will consume more power
+//Interrupt low pulse output width.
+//Unit: 0.1ms, optional value: 1~200. The default value is 10.
+const uint8_t TOUCH_REGISTER_IRQ_PULSE_WIDTH	= 0xED;
+
+//Normal rapid testing cycle.
+//This value affects LpAutoWakeTime and AutoSleepTime.
+//Unit: 10ms, optional values: 1~30. The default value is 1.
+const uint8_t TOUCH_REGISTER_NORMAL_SCAN_PERIOD	= 0xEE;
+
+//Gesture detection sliding partition angle control. Angle=tan(c)*10
+//c is the angle based on the positive direction of the x-axis.
+const uint8_t TOUCH_REGISTER_ANGLE_CONTROL		= 0xEF;
+
+//Low power consumption scans the upper 8 bits of the reference value of channel 1
+const uint8_t TOUCH_REGISTER_LpScanRaw1H		= 0xF0;
+const uint8_t TOUCH_REGISTER_LpScanRaw1L		= 0xF1;
+
+//Low power consumption scans the upper 8 bits of the reference value of channel 2
+const uint8_t TOUCH_REGISTER_LpScanRaw2H		= 0xF2;
+const uint8_t TOUCH_REGISTER_LpScanRaw2L		= 0xF3;
+
+//Automatic recalibration cycle during low power consumption.
+//The unit is 1 minute, optional values: 1~5. The default value is 5
+const uint8_t TOUCH_REGISTER_LpAutoWakeTime		= 0xF4;
+
+//Low power scan wake-up threshold. The smaller it is, the more sensitive it is.
+//Optional values: 1~255. The default value is 48
+const uint8_t TOUCH_REGISTER_LpScanTH			= 0xF5;
+
+//Low power scanning range. The bigger it is, the more sensitive it is and the higher its power consumption.
+//Optional values: 0, 1, 2, 3. The default value is 3.
+const uint8_t TOUCH_REGISTER_LpScanWin			= 0xF6;
+
+//Low power scanning frequency. The smaller it is, the more sensitive it is.
+//Optional values: 1~255. The default value is 7
+const uint8_t TOUCH_REGISTER_LpScanFreq			= 0xF7;
+
+//Low power scan current. The smaller it is, the more sensitive it is.
+//Optional values: 1~255
+const uint8_t TOUCH_REGISTER_LpScanIdac			= 0xF8;
+
+//When there is no touch within x seconds, it automatically enters low power consumption mode.
+//The unit is 1sec, and the default value is 2sec.
+const uint8_t TOUCH_REGISTER_AutoSleepTime		= 0xF9;
+
+const uint8_t TOUCH_REGISTER_IRQ_CTL			= 0xFA;		//interrupt control
+const uint8_t TOUCH_IRQ_EN_IRQ_TEST				= 0x80;		//Interrupt pin test, automatically send out low pulse periodically after enabled
+const uint8_t TOUCH_IRQ_EN_TOUCH				= 0x40;	//Periodically pulses low when a touch is detected	//gives a lot of events, in itself only provide touch (TOUCH_CONTACT) info. also include gesture info
+const uint8_t TOUCH_IRQ_EN_CHANGE				= 0x20;	//When a change in touch status is detected, a low pulse is emitted	//gives or adds the release (TOUCH_UP) info
+const uint8_t TOUCH_IRQ_EN_MOTION				= 0x10;	//When a gesture is detected, pulse low	//seems to add the GESTURE_TOUCH_BUTTON events, add long press-while-still-touched gestures
+const uint8_t TOUCH_IRQ_EN_LONGPRESS			= 0x01;	//The long press gesture only emits a low pulse signal	//seems to do nothing..?	//note: document inconsist
+
+//When there is a touch but no valid gesture within x seconds, it will automatically reset.
+//The unit is 1sec. When it is 0, this function is not enabled. Default is 5sec
+const uint8_t TOUCH_REGISTER_AutoReset			= 0xFB;
+
+//Automatically reset after long pressing for x seconds.
+//The unit is 1sec. When it is 0, this function is not enabled. Default is 10
+const uint8_t TOUCH_REGISTER_LongPressMaxTime	= 0xFC;
+
+const uint8_t TOUCH_REGISTER_IO_CTL				= 0xFD;
+const uint8_t TOUCH_IO_SOFT_RST					= 0x04;	//The main control implements the soft reset function of the touch control by pulling the IRQ pin low. 0= Soft reset is disabled, 1= Enable soft reset.
+const uint8_t TOUCH_IO_IIC_0D					= 0x02;	//IIC pin drive mode, the default is resistor pull-up. 0= Resistor pull-up, 1=OD
+const uint8_t TOUCH_IO_LEVEL_SELECTION			= 0x01;	//IIC and IRQ pin level selection, the default is VDD level. 0=VDD, 1=1.8V
+
+//can be used to disable auto sleep, might be quicker (?) but will consume more power
+//The default is 0, which enables automatic entry into low power mode.
+//When the value is non-0, automatic entry into low power consumption mode is prohibited.
+const uint8_t TOUCH_REGISTER_AUTOSLEEP			= 0xFE;
 
 const uint8_t  I2C_OK = 0;
 
-const int TOUCH_BUTTON_X = 360;
-const int TOUCH_BUTTON_Y =  85;
+const int TOUCH_BUTTON_X = 360;	//T-Display default
+const int TOUCH_BUTTON_Y =  85;	//T-Display default
 
 #ifdef CST816_TOUCH_LIB_DEBUG
 #warning Just a message to note that CST816Touch debug messages are enabled
@@ -55,86 +116,64 @@ namespace MDO {
 bool	g_bTouchInterrupt = false;
 
 /**
- * Private: Determines the difference in time between two millis calls, assuming to be 'short'.
- * (where short < half the overflow time, so roughly 25 days)
- */
-unsigned long CST816Touch::millisDiff(const unsigned long& ulStart, const unsigned long& ulEnd) {
-	unsigned long ulDiff = 0;
-	if (ulStart <= ulEnd) {
-		//normal easy scenario
-		ulDiff = ulEnd - ulStart;
-	} else {
-		//an overflow has occured, so ulStart > ulEnd
-		ulDiff = ulEnd + (ULONG_MAX - ulStart);
-	}
-
-	return ulDiff;
-}
-
-/**
- * Private: Determines the difference in time between 'now' and the provided start time (which should also be a result from millis), assuming to be 'short'.
- * (where short < half the overflow time, so roughly 25 days)
- */
-unsigned long CST816Touch::millisDiff(const unsigned long& ulStart) {
-	return millisDiff(ulStart, millis());
-}
-
-/**
  * Private: Converts the touch coordinates.
  * Note that this assumes the USB of the LILYGO T-Display ESP32-S3 to be on the right.
  * Assuming that, x=y=0 == lower left
- * note2: the touch-button is (TOUCH_BUTTON_X,TOUCH_BUTTON_Y) in this case
+ * note2: the touch-button is (m_iTouchButtonX,m_iTouchButtonY) in this case
+ * returns true when this TouchController events needs to be handled based on the current settings
  */
-bool CST816Touch::parseTouchEvent(int& x, int& y, bool& currentlyPressed) {
-	
-	const uint8_t TOUCH_XH = 3;		//X_position[11:8]		BIT 7 ~ BIT 6: event_flg
-	const uint8_t TOUCH_XL = 4;		//X_position[7:0]
-	
-	x = (m_ucBuffer[TOUCH_XH] & 0x0F) << 8;
-	x += m_ucBuffer[TOUCH_XL];
-	
-	const uint8_t TOUCH_YH = 5;		//Y_position[11:8]		BIT 7 ~ BIT 4: touch_ID[3:0]
-	const uint8_t TOUCH_YL = 6;		//Y_position[7:0]
-	
-	y = (m_ucBuffer[TOUCH_YH] & 0x0F) << 8;
-	y += m_ucBuffer[TOUCH_YL];
+bool CST816Touch::parseTouchControllerEvent(int& x, int& y, bool& currentlyPressed) {
 
-	uint8_t iEventFlag = (m_ucBuffer[TOUCH_XH] & 0xC0) >> 6;	//BIT 7 ~ BIT 6: event_flg from TOUCH_XH
+	//TOUCH_REGISTER_TOUCH_XH = 3 
+	//TOUCH_REGISTER_TOUCH_XL = 4	
+	x = (m_ucBuffer[TOUCH_REGISTER_TOUCH_XH] & 0x0F) << 8;	//X_position high: [11:8]		BIT 7 ~ BIT 6: event_flg
+	x += m_ucBuffer[TOUCH_REGISTER_TOUCH_XL];				//X_position low:  [7:0]
+	//TOUCH_REGISTER_TOUCH_YH = 5
+	//TOUCH_REGISTER_TOUCH_YL = 6		
+	y = (m_ucBuffer[TOUCH_REGISTER_TOUCH_YH] & 0x0F) << 8;	//Y_position high: [11:8]		BIT 7 ~ BIT 4: touch_ID[3:0]
+	y += m_ucBuffer[TOUCH_REGISTER_TOUCH_YL];				//Y_position low:  [7:0]
+
+	uint8_t iEventFlag = (m_ucBuffer[TOUCH_REGISTER_TOUCH_XH] & 0xC0) >> 6;	//BIT 7 ~ BIT 6: event_flg from TOUCH_REGISTER_TOUCH_XH
 	
 	if (m_bNotifyMotion) {
-		currentlyPressed = (iEventFlag == touch_t::TOUCH_CONTACT) || (iEventFlag == touch_t::TOUCH_DOWN);
+		currentlyPressed = (iEventFlag == TouchScreenController::touch_t::TOUCH_CONTACT) || (iEventFlag == TouchScreenController::touch_t::TOUCH_DOWN);
 	} else {
-		currentlyPressed = (iEventFlag == touch_t::TOUCH_DOWN);
+		currentlyPressed = (iEventFlag == TouchScreenController::touch_t::TOUCH_DOWN);
 	}
 
-#ifdef CST816_TOUCH_LIB_DEBUG	
-	//iEventFlag = iEventFlag >> 6; 
-	//Serial.print("Event flag: ");
-	//Serial.println(iEventFlag);
+	if (m_bSwapXY) {
+		int swapToBeUseful = x;	//the orientation for the T-Display S3 does not match the documentation one
+		x = y;					//so swap x and y
+		y = swapToBeUseful;
+	}
 	
-	int iTouchId = (m_ucBuffer[TOUCH_YH] & 0xF0) >> 4;
+#ifdef CST816_TOUCH_LIB_DEBUG
+	//Serial.print("x: "); Serial.print(x);
+	//Serial.print(", y: "); Serial.print(y);
+	//Serial.print(", pressed: "); Serial.println(currentlyPressed);
+	
+//	Serial.print("                                                                   Event flag: ");
+//	Serial.println(iEventFlag);
+	
+	int iTouchId = (m_ucBuffer[TOUCH_REGISTER_TOUCH_YH] & 0xF0) >> 4;
 	if (iTouchId != 0) {				//seems to always be 0
 		Serial.print("Touch ID: ");
 		Serial.println(iTouchId);
 	}
 #endif
 	
-	int swapToBeUseful = x;	//...
-	x = y;
-	y = swapToBeUseful;
-	
 	if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
-		return (iEventFlag == CST816Touch::touch_t::TOUCH_UP) || (iEventFlag == CST816Touch::touch_t::TOUCH_CONTACT);
+		return (iEventFlag == TouchScreenController::touch_t::TOUCH_UP) || (iEventFlag == TouchScreenController::touch_t::TOUCH_CONTACT);
 	}
 	
 	if (m_bNotifyMotion) {
 		//touch-up is required to ensure we still see normal press events
 		//contact is required for the gesture-movements
-		return (iEventFlag == CST816Touch::touch_t::TOUCH_UP) || (iEventFlag == CST816Touch::touch_t::TOUCH_CONTACT);
+		return (iEventFlag == TouchScreenController::touch_t::TOUCH_UP) || (iEventFlag == TouchScreenController::touch_t::TOUCH_CONTACT);
 	}
 	
 	if (m_bNotifyReleaseOnly) {
-		return iEventFlag == CST816Touch::touch_t::TOUCH_UP;
+		return iEventFlag == TouchScreenController::touch_t::TOUCH_UP;
 	}
 
 	return true;
@@ -155,7 +194,7 @@ bool CST816Touch::writeRegister(uint8_t ucRegister, uint8_t ucByteToWrite) {
 		bOk = iRet == I2C_OK;
 
 		if (!bOk) {
-			CST816_TOUCH_DEBUG_PRINT("Write command failed, reply: ");
+			CST816_TOUCH_DEBUG_PRINT("    Write command failed, reply: ");
 			CST816_TOUCH_DEBUG_PRINTLN(iRet);
 			//https://www.arduino.cc/reference/en/language/functions/communication/wire/endtransmission/
 		}
@@ -172,18 +211,160 @@ bool CST816Touch::readRegister(uint8_t ucRegister, uint8_t iRequestedSize) {
 	memset(m_ucBuffer, 0, sizeof(m_ucBuffer));
 	
 	if ((iRequestedSize <= sizeof(m_ucBuffer)) && (m_pI2C != 0)) {
+		//CST816_TOUCH_DEBUG_PRINTLN("    Request data");
 		m_pI2C->beginTransmission(m_ucAddress);
 		m_pI2C->write(ucRegister);
 
-		bOk =	(m_pI2C->endTransmission() == I2C_OK) && 
+		int iRet = m_pI2C->endTransmission();
+		bOk =	(iRet == I2C_OK) && 
 				(m_pI2C->requestFrom(m_ucAddress, iRequestedSize) > 0);
 		
 		if (bOk) {
+			//CST816_TOUCH_DEBUG_PRINTLN("    Reading");
 			bOk = m_pI2C->readBytes(&m_ucBuffer[0], iRequestedSize) >= iRequestedSize;
+		} else {
+			CST816_TOUCH_DEBUG_PRINT("    Read command failed, reply: ");
+			CST816_TOUCH_DEBUG_PRINTLN(iRet);			
 		}
+	} else {
+		CST816_TOUCH_DEBUG_PRINTLN("CST816Touch::readRegister - error");
 	}
 	
 	return bOk;
+}
+
+/**
+ * Private: reads the 'standard' CST816 register
+ * Returns true when [read was successful ] && [the read buffer was changed compared to the previous read]
+ */
+bool CST816Touch::read() { 
+	bool bReadSuccess = readRegister(TOUCH_REGISTER_WORK, sizeof(m_ucBuffer));
+	bool bSomethingToReport = (bReadSuccess) && (memcmp(m_ucBuffer, m_ucPreviousBuffer, sizeof(m_ucBuffer)) != 0);
+	
+    return bSomethingToReport;
+}
+
+/**
+ * Private: did we just had an event?
+ * Handles a interrupt from 'just now', while actively checking if we care (the relevant TouchController buffer needs to be altered)
+ */
+bool CST816Touch::hadPhysicalEvent() {
+	bool bHadPhysicalEvent = false;
+	
+	if (g_bTouchInterrupt) {
+		g_bTouchInterrupt = false;	//reset the interrupt flag as soon as possible
+		bHadPhysicalEvent = read();
+	}
+	
+	return bHadPhysicalEvent;
+}
+
+void CST816Touch::handleGesture(TouchScreenController::gesture_t eGesture, int x, int y, bool currentlyPressed) {
+	if ((eGesture != GESTURE_RIGHT) && (eGesture != GESTURE_LEFT) && 
+		(eGesture != GESTURE_DOWN) && (eGesture != GESTURE_UP) && 
+		(eGesture != GESTURE_TOUCH_BUTTON) && (eGesture != GESTURE_LONG_PRESS) && (eGesture != GESTURE_DOUBLE_CLICK))  {
+#ifdef CST816_TOUCH_LIB_DEBUG
+		Serial.print("Unkown gesture: ");
+		Serial.println(eGesture, HEX);
+		printBuf();
+#endif
+	}
+
+	bool bReportAnEvent = false;
+	
+	if (eGesture == GESTURE_TOUCH_BUTTON) {
+		//also this requires some specifics.. :-(
+		//sometimes this is triggered when you're just touching the center of the screen
+		//filter that by an additional position check
+		if ((x == m_iTouchButtonX) && (y == m_iTouchButtonY)) {		
+			bReportAnEvent = ((m_bNotifyReleaseOnly == false) ||					//if we want to know all event types
+							  ((m_bNotifyReleaseOnly) && (!currentlyPressed)));		//or, on a relevant event
+
+		}
+	} else {
+		//ok, good: we have a supported (and non-special-handling) gesture
+		if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
+			bReportAnEvent = true;
+		} else {
+			bReportAnEvent =	((m_bNotifyReleaseOnly == false) ||					//if we want to know all event types
+								 ((m_bNotifyReleaseOnly) && (!currentlyPressed)) ||	//or, on a relevant event
+								 (m_bNotifyMotion));								//or, on all movements
+		}
+	}
+	
+	if ((bReportAnEvent)															&&
+		(m_bNotifyMotion)															&&
+		(m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_FAST)	&& 		
+		((currentlyPressed) && (Tools::millisDiff(m_ulLastGestureTime) < m_ulMovementInterval))) {	//only check the timing then being pressed, thanks for the tip @rhueppin
+		//limit the amount of gesture events in 'report movement mode' to one per 50 msec
+		bReportAnEvent = false;
+	}
+	
+	if (bReportAnEvent) {
+		m_ulLastGestureTime = millis();
+		notifyObservers(eGesture, x, y, currentlyPressed);
+	} else {
+		//CST816_TOUCH_DEBUG_PRINTLN("Not handling this");	
+	}	
+}
+
+/**
+ * Private: handle a gesture
+ * returns true when something was (or should be) reported
+ */
+void CST816Touch::handleGesture() {
+	
+	TouchScreenController::gesture_t eGesture = (TouchScreenController::gesture_t)m_ucBuffer[TOUCH_REGISTER_GESTURE];
+#ifdef CST816_TOUCH_LIB_DEBUG
+	//printBuf(true);
+#endif
+
+	int x = 0;
+	int y = 0;
+	bool currentlyPressed = false;
+	if (!parseTouchControllerEvent(x, y, currentlyPressed)) {
+		//CST816_TOUCH_DEBUG_PRINTLN("        handleGesture - not handling this");
+		return;
+	}
+
+	handleGesture(eGesture, x, y, currentlyPressed);
+}
+
+/**
+ * Private: Handle a touch event
+ */
+void CST816Touch::handleTouch() {
+	
+	bool bReportAnEvent = false;
+	
+	int x=0;
+	int y=0;
+	bool currentlyPressed = false;
+	if (!parseTouchControllerEvent(x, y, currentlyPressed)) {
+		//CST816_TOUCH_DEBUG_PRINTLN("        handleTouch - not handling this");
+		return;
+	}		
+		
+	if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
+		bReportAnEvent = true;
+	} else {
+		bReportAnEvent =	((m_bNotifyReleaseOnly == false) ||					//if we want to know all event types
+							((m_bNotifyReleaseOnly) && (!currentlyPressed)));	//or, on a relevant event
+	}
+
+	if ((x == m_iTouchButtonX) && (y == m_iTouchButtonY)) {
+		//sometimes a touch on the touch-button is not registered as such.. Handle this here for a more consistent interfase
+		if (bReportAnEvent) {
+			if (!currentlyPressed) {	//Just like for the other gestures: assuming no 'touch' is required here, only the 'release'.
+				handleGesture(GESTURE_TOUCH_BUTTON, x, y, currentlyPressed);
+			}
+		}
+	} else {
+		//not a touch_button, but a normal touch
+		if (bReportAnEvent) {
+			notifyObservers(x, y, currentlyPressed);
+		}
+	}
 }
 
 /**
@@ -203,8 +384,9 @@ bool CST816Touch::setOperatingMode(touch_opering_mode_t eOperingMode, bool bNoti
 	bool bOk = false;
 	switch (eOperingMode) {
 		case CST816Touch::touch_opering_mode_t::TOUCH_MODE_FAST:
-			CST816_TOUCH_DEBUG_PRINTLN("Enabling fast operation mode");
+			CST816_TOUCH_DEBUG_PRINTLN(String("Enabling fast operation mode") + (bNotifyMotion?" - notify on motion":""));
 			ucIRQEnable = TOUCH_IRQ_EN_CHANGE;
+			//ucIRQEnable |= TOUCH_IRQ_EN_MOTION;	//MDO!, als test voor nu
 			if (bNotifyMotion) {
 				ucIRQEnable |= TOUCH_IRQ_EN_MOTION | TOUCH_IRQ_EN_TOUCH;
 			}
@@ -234,6 +416,10 @@ bool CST816Touch::setOperatingMode(touch_opering_mode_t eOperingMode, bool bNoti
 		}
 	}
 	if (bOk) {
+		//MDO!, als test voor nu
+		//ucMotionMask |= MOTION_MASK_CONTINUOUS_LEFT_RIGHT;
+		//ucMotionMask |=  MOTION_MASK_CONTINUOUS_UP_DOWN;
+		//end
 		bOk = writeRegister(TOUCH_REGISTER_MOTION_MASK, ucMotionMask);
 	}
 	
@@ -241,7 +427,7 @@ bool CST816Touch::setOperatingMode(touch_opering_mode_t eOperingMode, bool bNoti
 }
 
 /**
- * Private: just for debug purposes, reads the registers determining the operational mode
+ * Protected: just for debug purposes, reads the registers determining the operational mode
  */
 bool CST816Touch::printChipOperatingMode() {
 
@@ -274,203 +460,111 @@ bool CST816Touch::printChipOperatingMode() {
 	return bOk;
 }
 
-
 /**
- * Private: reads the 'standard' CST816 register
+ * Protected: Set the quickest operating mode.
+ * Double click and long press are software based, double click triggers 2 touch events AND a gesture event
  */
-bool CST816Touch::read() { 
-	bool bReadSuccess = readRegister(TOUCH_REGISTER_WORK, sizeof(m_ucBuffer));
-	bool bSomethingToReport = (bReadSuccess) && (memcmp(m_ucBuffer, m_ucPreviousBuffer, sizeof(m_ucBuffer)) != 0);
-	
-    return bSomethingToReport;
+bool CST816Touch::setOperatingModeFast() {
+	return	setOperatingMode(TOUCH_MODE_FAST, m_bNotifyMotion, false) ||	//try without waking the chip first
+			setOperatingMode(TOUCH_MODE_FAST, m_bNotifyMotion, true);
 }
 
 /**
- * Private: did we just had an event?
- * Either handles a interrupt from 'just now', or actively checks this
+ * Set full hardware based operating mode.
+ * Resets NotificationsOnReleaseOnly-state and NotifyOnMovement-state (both: off)
+ * Long press takes a lot longer, double click however only gives a single gesture event 
  */
-bool CST816Touch::hadPhysicalEvent() {
-	bool bHadPhysicalEvent = false;
+bool CST816Touch::setOperatingModeHardwareBased() {
+	m_bNotifyReleaseOnly = true;
+	m_bNotifyMotion = false;	
+
+	bool bOk =	setOperatingMode(TOUCH_MODE_HARDWARE, m_bNotifyMotion, false) ||	//try without waking the chip first
+				setOperatingMode(TOUCH_MODE_HARDWARE, m_bNotifyMotion, true);
 	
-	if (g_bTouchInterrupt) {
-		g_bTouchInterrupt = false;
-		bHadPhysicalEvent = read();
-	}
-	
-	return bHadPhysicalEvent;
+	return bOk;
 }
 
-bool CST816Touch::handleGesture(gesture_t eGesture, int x, int y, bool currentlyPressed) {
-	if ((eGesture != GESTURE_RIGHT) && (eGesture != GESTURE_LEFT) && 
-		(eGesture != GESTURE_DOWN) && (eGesture != GESTURE_UP) && 
-		(eGesture != GESTURE_TOUCH_BUTTON) && (eGesture != GESTURE_LONG_PRESS) && (eGesture != GESTURE_DOUBLE_CLICK))  {
+/**
+ * Sets the minimal time (in msec) which should have passed before a new gesture-movement is reported. defaults to 50
+ * In only relevant when setNotifyOnMovement(true) has been called
+ */
+void CST816Touch::setMovementInterval(unsigned long ulMovementInterval) {
+	m_ulMovementInterval = ulMovementInterval;
+}
+
+/**
+ * get notifications on touch events and release event
+ * Note that this is only supported when touch operating mode is TOUCH_MODE_FAST
+ */
+bool CST816Touch::setNotificationsOnAllEvents() {
+
+	bool bOk = (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_FAST);
+	
+	if (bOk) {
+		m_bNotifyReleaseOnly = false;
+	} else {
 #ifdef CST816_TOUCH_LIB_DEBUG
-		Serial.print("Unkown gesture: ");
-		Serial.println(eGesture, HEX);
-		printBuf();
-		return false;
+		if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
+			CST816_TOUCH_DEBUG_PRINTLN("Setting notifications on touch-events and release-events does not work in TOUCH_MODE_HARDWARE mode");
+		} else if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_DEFAULT) {
+			CST816_TOUCH_DEBUG_PRINTLN("Please set an operational mode first");
+		}
 #endif
 	}
 
-	bool bReportAnEvent = false;
 	
-	if (eGesture == GESTURE_TOUCH_BUTTON) {
-		//also this requires some specifics.. :-(
-		//sometimes this is triggered when you're just touching the center of the screen
-		//filter that by an additional position check
-		if ((x == TOUCH_BUTTON_X) && (y == TOUCH_BUTTON_Y)) {		
-			bReportAnEvent = ((m_bNotifyReleaseOnly == false) ||					//if we want to know all event types
-							  ((m_bNotifyReleaseOnly) && (!currentlyPressed)));		//or, on a relevant event
+	return m_bNotifyReleaseOnly == false;
+}
 
-		}
-	} else {
-		//ok, good: we have a supported (and non-special-handling) gesture
-		if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
-			bReportAnEvent = true;
+/**
+ * get notifications on release event only - this is the default
+ * When enabled, invalidates setNotifyOnMovement(true)
+ */
+void CST816Touch::setNotificationsOnReleaseOnly() {
+	m_bNotifyReleaseOnly = true;	
+	if (m_bNotifyMotion) {
+		setNotifyOnMovement(false);
+	}
+}
+
+/**
+ * Enables / disables notifications on movement. Will only work in fast operating mode (setOperatingModeFast)
+ * When enabled, invalidates setNotificationsOnReleaseOnly
+ */
+bool CST816Touch::setNotifyOnMovement(bool bMovementNotificationsRequired /*= true*/) {
+	
+	bool bOk = false;
+	
+	if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_FAST) {
+		bool bModeChanged = bMovementNotificationsRequired != m_bNotifyMotion;
+		m_bNotifyMotion = bMovementNotificationsRequired;		
+		
+		if (bModeChanged) {
+			bOk = 	setOperatingMode(m_eOperatingMode, m_bNotifyMotion, false) ||	//try without a wake first..
+					setOperatingMode(m_eOperatingMode, m_bNotifyMotion, true);		//if not, awake it
+			
 		} else {
-			bReportAnEvent =	((m_bNotifyReleaseOnly == false) ||					//if we want to know all event types
-								 ((m_bNotifyReleaseOnly) && (!currentlyPressed)) ||	//or, on a relevant event
-								 (m_bNotifyMotion));								//or, on all movements
-		}
-	}
-	
-	if ((bReportAnEvent)															&&
-		(m_bNotifyMotion)															&&
-		(m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_FAST)	&& 		
-		(millisDiff(m_ulLastGestureTime) < m_ulMovementInterval)) {
-		//limit the amount of gesture events in 'report movement mode' to one per 50 msec
-		bReportAnEvent = false;
-	}
-	
-	if (bReportAnEvent) {
-		m_eLastGesture = eGesture;
-		m_iLastGestureX = x;
-		m_iLastGestureY = y;
-
-		m_bGestureConsumed = false;
-		m_ulLastGestureTime = millis();
-		if (m_pTouchSubscriber != 0) {
-			m_pTouchSubscriber->gestureNotification(this, m_eLastGesture, !currentlyPressed);
+			bOk = true;
 		}
 	} else {
-		//CST816_TOUCH_DEBUG_PRINTLN("Not handling this");	
-	}
-
-	return bReportAnEvent;
-	
-}
-
-/**
- * Private: handle a gesture
- * returns true when something was (or should be) reported
- */
-bool CST816Touch::handleGesture() {
-	
-	gesture_t eGesture = (gesture_t)m_ucBuffer[TOUCH_INDEX_GESTURE];
-
-	//printBuf(true);
-
-	int x = 0;
-	int y = 0;
-	bool currentlyPressed = false;
-	if (!parseTouchEvent(x, y, currentlyPressed)) {
-		//CST816_TOUCH_DEBUG_PRINTLN("        handleGesture - not handling this");
-		return false;
-	}
-
-	return handleGesture(eGesture, x, y, currentlyPressed);
-}
-
-/**
- * Private: Handle a touch event
- */
-bool CST816Touch::handleTouch() {
-	
-	bool bReportAnEvent = false;
-	
-	int x=0;
-	int y=0;
-	bool currentlyPressed = false;
-	if (!parseTouchEvent(x, y, currentlyPressed)) {
-		//CST816_TOUCH_DEBUG_PRINTLN("        handleTouch - not handling this");
-		return false;
-	}		
-		
-	if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
-		bReportAnEvent = true;
-	} else {
-		bReportAnEvent =	((m_bNotifyReleaseOnly == false) ||				//if we want to know all event types
-							((m_bNotifyReleaseOnly) && (!currentlyPressed)));	//or, on a relevant event
-	}
-
-	if ((x == TOUCH_BUTTON_X) && (y == TOUCH_BUTTON_Y)) {
-		//sometimes a touch on the touch-button is not registered as such.. Handle this here for a more consitent interfase.			
-		m_eLastGesture = GESTURE_TOUCH_BUTTON;
-
-		if (bReportAnEvent) {
-			bReportAnEvent = handleGesture(GESTURE_TOUCH_BUTTON, x, y, currentlyPressed);
-		}
-	} else {
-		//not a touch_button, but a normal touch
-		m_iLastTouchX = x;
-		m_iLastTouchY = y;
-		if (bReportAnEvent) {
-			m_bTouchConsumed = false;
-			if (m_pTouchSubscriber != 0) {
-				m_pTouchSubscriber->touchNotification(this, m_iLastTouchX, m_iLastTouchY, !currentlyPressed);
+		m_bNotifyMotion = false;
+		if (bMovementNotificationsRequired) {
+			//since this seems to remove the double-click capability detection from the chip
+			if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
+				CST816_TOUCH_DEBUG_PRINTLN("Movement notifications do not seem to be possible in hardware mode..");
+			} else {	//TOUCH_MODE_DEFAULT
+				CST816_TOUCH_DEBUG_PRINTLN("Please set an operational mode first");
 			}
-		}
-		
-		if ((!currentlyPressed) && (m_eOperatingMode != touch_opering_mode_t::TOUCH_MODE_HARDWARE)){
-			//check if we can register this as a double click, but not in the mode where the hardware already does this..
-			if (millisDiff(m_ulLastTouchTime) < 500) {				
-				//CST816_TOUCH_DEBUG_PRINTLN("Creating a software based double click event");
-				bReportAnEvent = handleGesture(GESTURE_DOUBLE_CLICK, x, y, currentlyPressed);
-			}				
-			m_ulLastTouchTime = millis();
+		} else {
+			bOk = true;
 		}
 	}
 	
-	return bReportAnEvent;
+	return bOk;
 }
 
-/*static*/ String CST816Touch::deviceTypeToString(device_type_t eDeviceType) {
-	
-	switch (eDeviceType) {
-		case DEVICE_CST716:		return "CST716";
-		case DEVICE_CST816S:	return "CST816S";
-		case DEVICE_CST816T:	return "CST816T";
-		case DEVICE_CST816D:	return "CST816D";
-		case DEVICE_UNKNOWN:
-		default:
-			//revert to the default behaviour
-			break;
-	}
-	
-	return String("Unknow device type: ") + String((int)eDeviceType);
-}
-
-/**
- * Convert a gesture id (gesture_t) to a String
- */
-/*static*/ String CST816Touch::gestureIdToString(int iGestureId) {
-	if (iGestureId > 0) {
-		gesture_t eGesture((gesture_t)iGestureId);
-		switch (eGesture) {
-			case GESTURE_NONE:			return "NONE";
-			case GESTURE_LEFT:			return "LEFT";
-			case GESTURE_RIGHT:			return "RIGHT";
-			case GESTURE_UP:			return "UP";
-			case GESTURE_DOWN:			return "DOWN";
-			case GESTURE_TOUCH_BUTTON:	return "TOUCH_BUTTON";
-			case GESTURE_DOUBLE_CLICK:	return "DOUBLE_CLICK";
-			case GESTURE_LONG_PRESS:	return "LONG_PRESS";
-			default:
-				//revert to the default behaviour
-				break;			
-		}
-	}
-	return String("UNKNOWN: ") + String(iGestureId);
+/*static*/ uint8_t CST816Touch::getDefaultI2Caddress() {
+	return CTS816_I2C_ADDRESS;
 }
 
 /*static*/ String CST816Touch::operatingModeToString(touch_opering_mode_t eOperatingMode) {
@@ -486,49 +580,6 @@ bool CST816Touch::handleTouch() {
 }
 
 /**
- * Get the position of the last touch.
- * Note: 'consumes the last touch', meaning it will reset this info, to minimize the chance of a dual processing of a single event
- * When x=y=0, please assume no touch ever happened.
- */
-void CST816Touch::getLastTouchPosition(int& x, int& y) {
-	if (!m_bTouchConsumed) {
-		m_bTouchConsumed = true;
-		x = m_iLastTouchX;
-		y = m_iLastTouchY;
-	} else {
-		x = 0;
-		y = 0;
-	}
-	
-}
-
-/**
- * Get the position of the last gesture.
- * Note: 'consumes the last gesture', meaning it will reset this info, to minimize the chance of a dual processing of a single event
- * When x=y=0, please assume no gesture ever happened.
- */
-void CST816Touch::getLastGesture(gesture_t& gesture, int& x, int& y) {
-	if (!m_bGestureConsumed) {
-		m_bGestureConsumed = true;
-		x = m_iLastGestureX;
-		y = m_iLastGestureY;
-		gesture = m_eLastGesture;
-	} else {
-		gesture	= GESTURE_NONE;
-		x = 0;
-		y = 0;
-	}
-}
-
-bool CST816Touch::hadTouch() const {
-	return (m_iLastTouchX != 0) && (m_iLastTouchY != 0) && (!m_bTouchConsumed);
-}
-
-bool CST816Touch::hadGesture() const {
-	return (m_eLastGesture != GESTURE_NONE) && (!m_bGestureConsumed);
-}
-
-/**
  * Sets the auto sleep mode, note that the default is: 'auto sleep mode on'
  * In 'dynamic mode' it is documented to consume < 2.5mA, while in the other two sleep modes it consumes <10uA and <5uA respectively.
  * returns true on success
@@ -538,16 +589,17 @@ bool CST816Touch::setAutoSleep(bool bEnable) {
 	if (!bEnable) {
 		ucAutoSleep = 0xFF;	//disable auto sleep
 	}
-	
+	CST816_TOUCH_DEBUG_PRINT("CST816Touch::setAutoSleep ");
+	CST816_TOUCH_DEBUG_PRINTLN(bEnable);
 	return writeRegister(TOUCH_REGISTER_AUTOSLEEP, ucAutoSleep);
 }
 
 
-bool CST816Touch::getDeviceType(device_type_t& eDeviceType) {
+bool CST816Touch::getDeviceType(TouchScreenController::device_type_t& eDeviceType) {
 
 	bool bOk = readRegister(TOUCH_REGISTER_CHIP_ID, 1);
 	if (bOk) {
-		eDeviceType = (device_type_t)m_ucBuffer[0];
+		eDeviceType = (TouchScreenController::device_type_t)m_ucBuffer[0];
 	}
 	
 	return bOk;
@@ -561,7 +613,7 @@ bool CST816Touch::getFirmwareVersion(unsigned char& ucFW) {
 	bool bOk = false;
 	ucFW = 0;
 	
-	CST816_TOUCH_DEBUG_PRINTLN("Checking touch firmware..");	
+	//CST816_TOUCH_DEBUG_PRINTLN("Checking touch controller firmware..");	
 
 	bOk = readRegister(TOUCH_REGISTER_FW_VERSION, 1);
 	if (bOk) {
@@ -569,7 +621,8 @@ bool CST816Touch::getFirmwareVersion(unsigned char& ucFW) {
 	}
 
 	if (!bOk) {
-		CST816_TOUCH_DEBUG_PRINTLN("Checking touch firmware failed");
+		CST816_TOUCH_DEBUG_PRINT("Checking touch firmware failed. Typically: device not found. Buffer: ");
+		CST816_TOUCH_DEBUG_PRINTLN((uint8_t)m_ucBuffer[0]);
 	}
 	
 	return bOk;
@@ -583,7 +636,10 @@ bool CST816Touch::sleep() {
 	bool bOk = writeRegister((uint8_t)TOUCH_REGISTER_SLEEP, (uint8_t)TOUCH_CMD_SLEEP);
 
 	if (!bOk) {
-		CST816_TOUCH_DEBUG_PRINTLN("Sleep request failed..");
+		CST816_TOUCH_DEBUG_PRINTLN("Sleep request failed. Chip already asleep?");
+		//since the chip is already asleep, no need to see this as an error
+		//so just continue with setting the proper interrupt pin for the ESP32
+		bOk = true;
 	}
 	
 	if (m_iPIN_RESET != -1) {
@@ -615,11 +671,11 @@ bool CST816Touch::resetChip(bool bRestoreState) {
 	touch_opering_mode_t ePreviousOperatingMode = m_eOperatingMode;
 	
 	if (m_iPIN_RESET != -1) {
-		CST816_TOUCH_DEBUG_PRINTLN("Resetting the CST816");
+		CST816_TOUCH_DEBUG_PRINTLN("Resetting the touch controller chip");
 		digitalWrite(m_iPIN_RESET, LOW);	//this is the actual reset
 		delay(20);							//arbitrary-but-tested value..
 		digitalWrite(m_iPIN_RESET, HIGH);	
-		delay(100);							//arbitrary-but-tested value.. (100 seems to work as well)
+		delay(100);							//arbitrary-but-tested value.. (100 seems to work)
 		
 		//ensure we know the reset happened, to ensure we don't get into limbo
 		m_eOperatingMode = CST816Touch::touch_opering_mode_t::TOUCH_MODE_DEFAULT;
@@ -630,6 +686,8 @@ bool CST816Touch::resetChip(bool bRestoreState) {
 		} else {
 			bOk = true;
 		}
+	} else {
+		bOk = true;	//we're not able to reset.. So indicate 'all good'.. ?
 	}
 	return bOk;
 }
@@ -660,25 +718,12 @@ void CST816Touch::printBuf(bool bWhenChangedOnly /* = false*/) {
 }
 
 /**
- * De-initialize this classs.
- */
-void CST816Touch::deInit() {
-	stop();
-}
-
-/**
  * Counterpart of begin
  */
 void CST816Touch::stop() {
-	if ((m_pI2C != 0) && (m_bWeInitializedI2C)) {
-		m_pI2C->end();
-	}
 	m_pI2C = 0;
 	memset(m_ucBuffer, 0, sizeof(m_ucBuffer));
 	memset(m_ucPreviousBuffer, 0, sizeof(m_ucPreviousBuffer));
-	m_pTouchSubscriber = 0;
-	m_bTouchConsumed = true;
-	m_bGestureConsumed = true;
 }
 
 /**
@@ -686,23 +731,16 @@ void CST816Touch::stop() {
  * The return value *can* optionally be checked if a touch/gesture has happened, also see hadTouch & hadGesture for 'the same'.
  * All of this return value checking, hadTouch & hadGesture are not needed when the callback mechanism is used.
  */
-bool CST816Touch::control() {
+/*virtual*/ void CST816Touch::control() {
 	bool bHadPhysicalEvent = hadPhysicalEvent();
-	bool bReportAnEvent = false;
-	
-	if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_DEFAULT) {
-		//none of the two main operating modes has been set yet.
-		//ignore input based on that
-		return false;
-	}
 	
 	if (bHadPhysicalEvent) {
 #ifdef CST816_TOUCH_LIB_DEBUG
 		//printBuf(true);
 #endif
 		
-		gesture_t eGesture = (gesture_t)m_ucBuffer[TOUCH_INDEX_GESTURE];
-		bool bGesture = eGesture != 0x00;
+		TouchScreenController::gesture_t eGesture = (TouchScreenController::gesture_t)m_ucBuffer[TOUCH_REGISTER_GESTURE];
+		bool bGesture = eGesture != TouchScreenController::gesture_t::GESTURE_NONE;
 		//if needed, the following will convert a 'touch_button'-gesture to a normal touch
 		if ((bGesture) && (eGesture == GESTURE_TOUCH_BUTTON) && (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE)) {
 			bGesture = false;				//handle as normal touch
@@ -711,167 +749,57 @@ bool CST816Touch::control() {
 		
 		//check gesture first
 		if (bGesture) {
-			bReportAnEvent = handleGesture();
+			handleGesture();
 		} else {
-			bReportAnEvent = handleTouch();
+			handleTouch();
 		}
-		//ensure we never re-parse the same
+		//ensure we never re-parse the same, so remember the current buffer state
 		memcpy(m_ucPreviousBuffer, m_ucBuffer, sizeof(m_ucBuffer));		
 	}
 	
 	if ((m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) &&
 		(m_ulLastGestureTime != 0) &&
-		(millisDiff(m_ulLastGestureTime) > 100)) {
+		(Tools::millisDiff(m_ulLastGestureTime) > 100)) {
 		//ok, so in TOUCH_MODE_HARDWARE mode, we only get relevant events (as-in, only the 'release', not the 'press')
 		//in that scenario, when clicking on the EXACT SAME position twice, 
 		//we will not get the second touch, which is caused by it being filtered using the m_ucPreviousBuffer (being equal).
-		//It sounds like that will never happen, but this is exactly what happens with the touch-button at the right side of the screen
+		//It sounded like that will never happen, but this is exactly what happens with the touch-button at the right side of the screen
 		//..
 		//so reset the buffer to ensure we 'forget', assuming 100 msec as a safe timeout
 		memset(m_ucPreviousBuffer, 0, sizeof(m_ucPreviousBuffer));
 		m_ulLastGestureTime = 0;
 	}
 	
-	return bReportAnEvent;
+	TouchScreenController::control();
 }
 
 /**
- * Sets the minimal time (in msec) which should have passed before a new gesture-movement is reported. defaults to 50
- * In only relevant when setNotifyOnMovement(true) has been called
+ * set the coordinates of the touch button.
+ * T-Display: 360, 85
+ * T-Display S3: 600, 120
  */
-void CST816Touch::setMovementInterval(unsigned long ulMovementInterval) {
-	m_ulMovementInterval = ulMovementInterval;
+void CST816Touch::setTouchButtonCoordinates(int iTouchButtonX, int iTouchButtonY) {
+	m_iTouchButtonX = iTouchButtonX;
+	m_iTouchButtonY = iTouchButtonY;
 }
+
 /**
- * Enables / disables notifications on movement. Will only work in fast operating mode (setOperatingModeFast)
- * When enabled, invalidates setNotificationsOnReleaseOnly
+ * default is T-Display which needs swapping the XY coordinates
  */
-bool CST816Touch::setNotifyOnMovement(bool bMovementNotificationsRequired /*= true*/) {
-	
-	bool bOk = false;
-	
-	if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_FAST) {
-		bool bModeChanged = bMovementNotificationsRequired != m_bNotifyMotion;
-		m_bNotifyMotion = bMovementNotificationsRequired;		
-		
-		if (bModeChanged) {
-			bOk = 	setOperatingMode(m_eOperatingMode, m_bNotifyMotion, false) ||	//try without a wake first..
-					setOperatingMode(m_eOperatingMode, m_bNotifyMotion, true);		//if not, awake it
+void CST816Touch::setSwapXY(bool bSwapXY /*= true*/) {
+	m_bSwapXY = bSwapXY;
+}
+
+/**
+ * setHardwareLongPressTime => 0 is disable, default is 10
+ */
+bool CST816Touch::setHardwareLongPressTime(uint8_t uiLongPressTime) {
+	bool bOk = writeRegister((uint8_t)TOUCH_REGISTER_LongPressMaxTime, uiLongPressTime);
 #ifdef CST816_TOUCH_LIB_DEBUG
-			printChipOperatingMode();
-#endif
-			
-		} else {
-			bOk = true;
-		}
-	} else {
-		m_bNotifyMotion = false;
-		if (bMovementNotificationsRequired) {
-			//since this seems to remove the double-click capability detection from the chip
-			if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
-				CST816_TOUCH_DEBUG_PRINTLN("Movement notifications do not seem to be possible in hardware mode..");
-			} else {	//TOUCH_MODE_DEFAULT
-				CST816_TOUCH_DEBUG_PRINTLN("Please set an operational mode first");
-			}
-		} else {
-			bOk = true;
-		}
+	if (!bOk) {
+		Serial.println("setHardwareLongPressTime failed");
 	}
-	
-	return bOk;
-}
-
-/**
- * get notifications on touch events and release event
- * Note that this is only supported when:
- *   - a TouchSubscriberInterface has been provided AND 
- *   - touch operating mode is TOUCH_MODE_FAST
- */
-bool CST816Touch::setNotificationsOnAllEvents() {
-
-	bool bOk = (m_pTouchSubscriber != 0) && (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_FAST);
-	
-	if (bOk) {
-		m_bNotifyReleaseOnly = false;
-	} else {
-#ifdef CST816_TOUCH_LIB_DEBUG
-		if (m_pTouchSubscriber != 0) {
-			CST816_TOUCH_DEBUG_PRINTLN("Setting notifications on touch-events and release-events only works in the callback enabled scenario");
-		}
-		if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_HARDWARE) {
-			CST816_TOUCH_DEBUG_PRINTLN("Setting notifications on touch-events and release-events does not work in TOUCH_MODE_HARDWARE mode");
-		} else if (m_eOperatingMode == CST816Touch::touch_opering_mode_t::TOUCH_MODE_DEFAULT) {
-			CST816_TOUCH_DEBUG_PRINTLN("Please set an operational mode first");
-		}
-#endif
-	}
-
-	
-	return m_bNotifyReleaseOnly == false;
-}
-
-/**
- * get notifications on release event only - this is the default
- * When enabled, invalidates setNotifyOnMovement(true)
- */
-void CST816Touch::setNotificationsOnReleaseOnly() {
-	m_bNotifyReleaseOnly = true;	
-	if (m_bNotifyMotion) {
-		setNotifyOnMovement(false);
-	}
-}
-
-/**
- * Set the quickest operating mode.
- * Double click and long press are software based, double click triggers 2 touch events AND a gesture event
- */
-bool CST816Touch::setOperatingModeFast() {
-	return	setOperatingMode(TOUCH_MODE_FAST, m_bNotifyMotion, false) ||	//try without waking the chip first
-			setOperatingMode(TOUCH_MODE_FAST, m_bNotifyMotion, true);
-}
-
-/**
- * Set full hardware based operating mode.
- * Resets NotificationsOnReleaseOnly-state and NotifyOnMovement-state (both: off)
- * Long press takes a lot longer, double click however only gives a single gesture event 
- */
-bool CST816Touch::setOperatingModeHardwareBased() {
-	m_bNotifyReleaseOnly = true;
-	m_bNotifyMotion = false;
-
-	bool bOk =	setOperatingMode(TOUCH_MODE_HARDWARE, m_bNotifyMotion, false) ||	//try without waking the chip first
-				setOperatingMode(TOUCH_MODE_HARDWARE, m_bNotifyMotion, true);
-
-#ifdef CST816_TOUCH_LIB_DEBUG	
-	printChipOperatingMode();
-#endif
-	
-	return bOk;
-}
-
-
-/**
- * Initialize: this is a mandatory call to be made
- * @deprecated, since this initializes Wire and it's not the Ardunio recommended name
- * For each PIN which this class should not use / change: set to -1
- * The interrupt pin is mandatory for proper usage.
- * return false on issues
- */
-bool CST816Touch::init(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*= 0*/, 
-							int PIN_INTERRUPT /*= 16*/, 
-							int I2C_SDA /*= 18*/, 
-							int I2C_SCL /*= 17*/, 
-							uint8_t CTS816S_I2C_ADDRESS /*= 0x15*/, 							
-							int PIN_RESET /*= 21*/) {	//note that this is a mandatory PIN, so don't set this to -1
-	
-	bool bOk = begin(w, pTouchSubscriber, PIN_INTERRUPT, CTS816S_I2C_ADDRESS, PIN_RESET);
-
-	if ((bOk) && (m_pI2C != 0)) {
-		m_pI2C->begin(I2C_SDA, I2C_SCL);
-		m_pI2C->setClock(400000);	//For reliable communication, it is recommended to use a maximum communication rate of 400Kbps	
-		m_bWeInitializedI2C = true;
-	}
-
+#endif	
 	return bOk;
 }
 
@@ -879,27 +807,30 @@ bool CST816Touch::init(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*
  * begin: this is a mandatory call to be made.
  * Please ensure that Wire has been initialized before this call, using the Wire.begin method
  * For each PIN which this class should not use / change: set to -1
- * The interrupt pin is mandatory for proper usage.
+ * For max power efficiency, the interrupt pin is mandatory. If this pin is not set: disables auto sleep.
  * return false on issues
  */
-bool CST816Touch::begin(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /*= 0*/, 
+bool CST816Touch::begin(	TwoWire& w,
+							TouchScreenObserver* pTouchScreenObserver,
 							int PIN_INTERRUPT 			/*= 16 */, 
-							uint8_t CTS816S_I2C_ADDRESS /*= 0x15*/, 							
-							int PIN_RESET 				/*= 21*/) {	//note that this is a mandatory PIN, so don't set this to -1
+							int PIN_RESET 				/*= 21*/,
+							uint8_t CTS816S_I2C_ADDRESS /*= 0x15*/) {
 	m_pI2C = &w;
 	bool bOk = m_pI2C != 0;
-	m_bWeInitializedI2C = false;
 	
 	m_ucAddress = CTS816S_I2C_ADDRESS;
 	m_iPIN_RESET = PIN_RESET;
 	m_iPIN_INTERRUPT = PIN_INTERRUPT;
-	m_pTouchSubscriber = pTouchSubscriber;
+	registerObserver(pTouchScreenObserver);
 	
-	if (bOk) {
-		bOk = m_iPIN_RESET != -1;
-	}
+//	if (bOk) {
+//		bOk = m_iPIN_RESET != -1;
+//	}
 	
-	if (bOk) {
+	if (m_iPIN_RESET == -1) {
+		//CST816_TOUCH_DEBUG_PRINTLN("No reset PIN available, disable auto-sleep");
+		//setAutoSleep(false);	//since we're not able to reset.. Ensure the chip does not auto sleep (so we keep able to communicate to the touch controller)
+	} else {
 		CST816_TOUCH_DEBUG_PRINTLN("Ensure touch screen is properly reset");
 		
 		//init PGIO, if required
@@ -920,52 +851,36 @@ bool CST816Touch::begin(TwoWire& w, TouchSubscriberInterface* pTouchSubscriber /
 		}
 #endif
 	}
-	
-	
-	if (m_iPIN_INTERRUPT != -1) {
-		CST816_TOUCH_DEBUG_PRINTLN("Configuring touch interrupt");		
-	    attachInterrupt(
-			m_iPIN_INTERRUPT, [] { g_bTouchInterrupt = true; }, FALLING);
-	}
-	
-	if (bOk) {
-		//set our default: the quickest one
-		bOk = setOperatingModeFast();
-	}
-	
-#ifdef CST816_TOUCH_LIB_DEBUG	
-	if (bOk) {
-		printChipOperatingMode();
-		CST816_TOUCH_DEBUG_PRINTLN("Touch screen configured");
+
+	if (m_iPIN_INTERRUPT == -1) {
+		CST816_TOUCH_DEBUG_PRINTLN("CST816Touch::begin - no interrupt pin defined");
 	} else {
-		CST816_TOUCH_DEBUG_PRINTLN("Touch screen configuration failed..");
+		if (bOk) {
+			CST816_TOUCH_DEBUG_PRINTLN("Configuring touch interrupt");
+			pinMode(m_iPIN_INTERRUPT, INPUT_PULLUP);
+			attachInterrupt(
+				m_iPIN_INTERRUPT, [] { g_bTouchInterrupt = true; }, FALLING);
+		}
 	}
-#endif	
 
 	return bOk;
 }
 
+
 CST816Touch::CST816Touch() {
 	m_pI2C = 0;
-	m_bWeInitializedI2C = false;
 	m_iPIN_RESET = -1;
 	m_iPIN_INTERRUPT = -1;
 	m_uiCTS816S_I2C_ADDRESS = 0;
 	
 	memset(m_ucBuffer, 0, sizeof(m_ucBuffer));
-	m_pTouchSubscriber = 0;
-	
-	m_eLastGesture	= GESTURE_NONE;
-	m_iLastGestureX = 0;
-	m_iLastGestureY = 0;
-	
+
 	m_ulLastTouchTime = 0;
-	m_iLastTouchX = 0;
-	m_iLastTouchY = 0;
 	
+	m_iTouchButtonX = TOUCH_BUTTON_X;	//init to T-Display default
+	m_iTouchButtonY = TOUCH_BUTTON_Y;	//init to T-Display default
 	
-	m_bTouchConsumed = true;
-	m_bGestureConsumed = true;
+	m_bSwapXY = true;	
 	m_eOperatingMode = CST816Touch::touch_opering_mode_t::TOUCH_MODE_DEFAULT;	//set to the default from the chip itself
 	m_bNotifyReleaseOnly = true;
 	m_bNotifyMotion = false;
@@ -975,7 +890,7 @@ CST816Touch::CST816Touch() {
 }
 
 CST816Touch::~CST816Touch() {
-	deInit();
+	stop();
 }
 
 }	//namespace end
