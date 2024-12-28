@@ -55,6 +55,13 @@ void CST816Touch_SWMode::setNotificationsOnReleaseOnly() {
 	CST816Touch::setNotificationsOnReleaseOnly();
 }
 
+/**
+ * Get our GestureFactory. Note: can be a null pointer..
+ */
+GestureFactory*	CST816Touch_SWMode::getGestureFactory() {
+	return m_pGestureFactory;
+}
+
 /*virtual*/ void CST816Touch_SWMode::control() {
 	CST816Touch::control();
 }

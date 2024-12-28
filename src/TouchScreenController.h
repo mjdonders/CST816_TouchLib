@@ -41,11 +41,21 @@ class TouchScreenController: public TouchScreenSubject {
 			DEVICE_CST816D	= 0xB6
 		};	
 	
-	private:
+	protected:
+		bool			m_bSwapXY;
+		bool			m_bInvertY;
+		int				m_iVerticalResolution;	
 	
+	protected:
+		virtual void	notifyObservers(int iGestureId, int x, int y, bool bCurrentlyPressed) const;	//gesture
+		virtual void	notifyObservers(int x, int y, bool bCurrentlyPressed) const;					//touch
+		
 	public:
 		static String	deviceTypeToString(device_type_t eDeviceType);
 		static String	gestureIdToString(gesture_t eGesture);
+		
+		void			setSwapXY(bool bSwapXY = true);		//default is T-Display which needs swapping the XY coordinates
+		bool			setInvertY(bool bInvertY, int iVerticalResolution);		
 
 		virtual void	control();	//please call in loop()
 	

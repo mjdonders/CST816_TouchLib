@@ -14,4 +14,9 @@
 #include "DoubleClickFactory.h"			//a TouchScreenEventProcessor capable of generating double click events. will slow down normal touch events
 #include "GestureFactory.h"				//a TouchScreenEventProcessor capable of generating the other supported gestures. no slow down involveds
 
+#include "TouchScreenGuiObserver.h"		//Observer for the TouchScreenGuiHelper
+#include "TouchScreenGuiHelper.h"		//an Observer which can be used to help answer which part of the screen is touched (and how)
+
+//Please see DebugMsg.h in case you want to enable / disable reported debug messages from this lib
+
 #endif

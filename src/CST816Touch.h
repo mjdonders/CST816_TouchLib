@@ -51,8 +51,6 @@ class CST816Touch: public TouchScreenController {
 
 		int							m_iTouchButtonX;
 		int							m_iTouchButtonY;
-
-		bool						m_bSwapXY;
 	
 	private:
 		bool			parseTouchControllerEvent(int& x, int& y, bool& currentlyPressed);
@@ -91,7 +89,6 @@ class CST816Touch: public TouchScreenController {
 		virtual void	control();	//please call in loop()
 		
 		void			setTouchButtonCoordinates(int iTouchButtonX, int iTouchButtonY);
-		void			setSwapXY(bool bSwapXY = true);		//default is T-Display which needs swapping the XY coordinates
 
 	protected:
 		bool			setHardwareLongPressTime(uint8_t uiLongPressTime);	//set long press time in hardware

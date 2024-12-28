@@ -10,7 +10,7 @@ namespace MDO {
  */ 
 class TouchScreenObserver {
 	
-	public:
+	public:	
 	
 	private:
 	

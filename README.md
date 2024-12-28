@@ -12,8 +12,8 @@ The examples also show how to use the T-Display S3 AMOLED: there are some hardwa
 I didn't test other CST816-based products, but I guess that these should work as well.
 
 There are two main ways of interfacing:
- * The easy way without any callbacks or so: please see example_no_callback
- * My preferred way using a callback mechanism based on an interface class: please see example_gesture_only
+ - The easy way without any callbacks or so: please see example_no_callback
+ - My preferred way using a callback mechanism based on an interface class: please see example_gesture_only
 
 An ESP32 deep sleep is also possible with a touch-based wakeup, please see example_gesture_only for that.
 For the CST816 sleep to work, it needs to be on when the command is issued (see 'Sleep behaviour' below), the above example shows that as well.
@@ -46,6 +46,12 @@ It's an option to use *setAutoSleep* to false, making sure this standby/sleep mo
 
 The above *resetChip* will only work if a reset pin is assigned (which is not the case for the T-Display S3 AMOLED).
 Right after the call to *begin*, *setAutoSleep* to false can be used. However since that's not always needed, I didn't implement this as default.
+
+## Usage - GUI handling
+There are two classes available to aid 'GUI handling'. Please see:
+- *TouchScreenGuiHelper*, which can be used to define regions of interest per 'page' (for multi-page user interfaces). The provided name will be reported when touched later. It will also report click, double click (when available based on the setup) and long press (also: when available based on the setup).
+- *TouchScreenGuiObserver*, this is the receiver of the above GUI events.
+Please see example_gui_helper.
 
 ## Other options
 - *getDeviceType*, check the type of CST816 chip
