@@ -51,6 +51,7 @@ Right after the call to *begin*, *setAutoSleep* to false can be used. However si
 There are two classes available to aid 'GUI handling'. Please see:
 - *TouchScreenGuiHelper*, which can be used to define regions of interest per 'page' (for multi-page user interfaces). The provided name will be reported when touched later. It will also report click, double click (when available based on the setup) and long press (also: when available based on the setup).
 - *TouchScreenGuiObserver*, this is the receiver of the above GUI events.
+
 Please see example_gui_helper.
 
 ## Other options
