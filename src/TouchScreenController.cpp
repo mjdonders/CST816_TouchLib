@@ -1,9 +1,29 @@
 #include "TouchScreenController.h"
 
-
+#include "DebugMsg.h"
 
 
 namespace MDO {
+
+/*virtual*/ void TouchScreenController::notifyObservers(int iGestureId, int x, int y, bool bCurrentlyPressed) const {
+	if (m_bInvertY) {
+		y = m_iVerticalResolution - y;
+	}
+	if (y < 0) {
+		CST816_TOUCH_DEBUG_PRINTLN("Invalid y position detected. Please check provided vertical resolution");
+	}
+	TouchScreenSubject::notifyObservers(iGestureId, x, y, bCurrentlyPressed);
+}
+
+/*virtual*/ void TouchScreenController::notifyObservers(int x, int y, bool bCurrentlyPressed) const {
+	if (m_bInvertY) {
+		y = m_iVerticalResolution - y;
+	}
+	if (y < 0) {
+		CST816_TOUCH_DEBUG_PRINTLN("Invalid y position detected. Please check provided vertical resolution");
+	}
+	TouchScreenSubject::notifyObservers(x, y, bCurrentlyPressed);
+}
 
 /*static*/ String TouchScreenController::deviceTypeToString(TouchScreenController::device_type_t eDeviceType) {
 	
@@ -43,11 +63,39 @@ namespace MDO {
 	return String("UNKNOWN: ") + String((int)eGestureId);
 }
 
+/**
+ * default is T-Display which needs swapping the XY coordinates
+ */
+void TouchScreenController::setSwapXY(bool bSwapXY /*= true*/) {
+	m_bSwapXY = bSwapXY;
+}
+
+/**
+ * Can be used to invert vertical coordinates.
+ * When set to true, iVerticalResolution is required.
+ */
+bool TouchScreenController::setInvertY(bool bInvertY, int iVerticalResolution) {
+
+	if (bInvertY) {
+		if (iVerticalResolution > 50) {	//some simple check..
+			m_iVerticalResolution = iVerticalResolution;
+			m_bInvertY = true;
+		}
+	} else {
+		m_bInvertY = false;
+	}
+	
+	return m_bInvertY == bInvertY;
+}
+
 /*virtual*/ void TouchScreenController::control() {
 	TouchScreenSubject::control();
 }
 
 TouchScreenController::TouchScreenController() {
+	m_bSwapXY = true;	
+	m_bInvertY = false;
+	m_iVerticalResolution = 0;
 }
 
 TouchScreenController::~TouchScreenController() {

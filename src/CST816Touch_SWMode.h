@@ -30,7 +30,8 @@ class CST816Touch_SWMode: public CST816Touch {
 		bool			setNotificationsOnAllEvents();		//get notifications on touch events and release event
 		void			setNotificationsOnReleaseOnly();	//get notifications on release event only - this is the *default*		
 	public:
-	
+		GestureFactory*	getGestureFactory();
+		
 		virtual void	control();	//please call in loop()
 	
 		void			enableDoubleClickFactory_Elegant(int iDoubleClickTime_msec = 500);

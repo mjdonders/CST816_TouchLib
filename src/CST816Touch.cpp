@@ -784,13 +784,6 @@ void CST816Touch::setTouchButtonCoordinates(int iTouchButtonX, int iTouchButtonY
 }
 
 /**
- * default is T-Display which needs swapping the XY coordinates
- */
-void CST816Touch::setSwapXY(bool bSwapXY /*= true*/) {
-	m_bSwapXY = bSwapXY;
-}
-
-/**
  * setHardwareLongPressTime => 0 is disable, default is 10
  */
 bool CST816Touch::setHardwareLongPressTime(uint8_t uiLongPressTime) {
@@ -880,7 +873,6 @@ CST816Touch::CST816Touch() {
 	m_iTouchButtonX = TOUCH_BUTTON_X;	//init to T-Display default
 	m_iTouchButtonY = TOUCH_BUTTON_Y;	//init to T-Display default
 	
-	m_bSwapXY = true;	
 	m_eOperatingMode = CST816Touch::touch_opering_mode_t::TOUCH_MODE_DEFAULT;	//set to the default from the chip itself
 	m_bNotifyReleaseOnly = true;
 	m_bNotifyMotion = false;

@@ -67,7 +67,7 @@ bool GestureFactory::handleVerticalGesture(int x, int y) {
 	//don't care about the time in this case.
 	
 	if (bWasVerticalGesture) {
-		bool bUp = y < m_iStartY;
+		bool bUp = m_bInvertGestureY ? (y < m_iStartY) : (y > m_iStartY);
 		if (bUp) {
 			getTouchScreenSubject()->notifyObserversWithoutProcessor(CST816Touch::gesture_t::GESTURE_UP, x, y, false);
 			invalidateTouchRegistration();		
@@ -179,6 +179,10 @@ bool GestureFactory::isInitialized() const {
 	return m_eState != tGestureFactoryState::NOT_INITIALIZED;	//anything other than not-initialized is initialized.. :-)
 }
 
+void GestureFactory::setInvertVerticalGestures(bool bInvertGestureY /*= true*/) {
+	m_bInvertGestureY = bInvertGestureY;
+}
+
 void GestureFactory::begin(	int iScreenWidth          /* = 0*/, 	//screen width. only needed when *not* providing iHorSwipeMinDistance
 							int iScreenHeight         /* = 0*/, 	//screen height. only needed when *not* providing iVertSwipeMinDistance
 							int iLongPressTime_sec    /* = 3 */,	//long press time in seconds (to keep the interface inline with the hardware capabilities
@@ -233,6 +237,7 @@ TouchScreenEventProcessor(pParent) {
 	m_iStartY = 0;
 	m_ulTouchTime = 0;
 	m_bMovementSinceTouch = false;
+	m_bInvertGestureY = false;
 }
 
 GestureFactory::~GestureFactory() {

@@ -8,6 +8,8 @@ TouchScreenObserver	KEYWORD1
 GestureFactory	KEYWORD1
 DoubleClickFactory	KEYWORD1
 ElegantDoubleClickFactory	KEYWORD1
+TouchScreenGuiHelper	KEYWORD1
+TouchScreenGuiObserver	KEYWORD1
 
 # Methods and Functions (KEYWORD2)
 control	KEYWORD2

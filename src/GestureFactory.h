@@ -34,7 +34,8 @@ class GestureFactory: public TouchScreenEventProcessor {
 		int							m_iStartX;
 		int							m_iStartY;
 		bool						m_bMovementSinceTouch;
-
+		
+		bool						m_bInvertGestureY;
 		
 	private:
 		bool	checkInitialized() const;
@@ -59,6 +60,7 @@ class GestureFactory: public TouchScreenEventProcessor {
 		virtual void		control();	//please call often, needed for all timing based gestures
 		
 		bool				isInitialized() const;	
+		void				setInvertVerticalGestures(bool bInvertGestureY = true);
 		void				begin(	int iScreenWidth = 0, int iScreenHeight = 0, 
 									int iLongPressTime_sec = 3,	int iLongPressMaxDistance = -1, 
 									int iHorSwipeMinDistance = -1, int iVertSwipeMinDistance = -1); 
