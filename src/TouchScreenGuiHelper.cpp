@@ -14,6 +14,27 @@ bool TouchScreenGuiHelper::isInGuiElement(int x, int y, const gui_element_t& sGu
 	return (x >= sGuiElement.iLeftX) && (x <= sGuiElement.iRightX) && (y <= sGuiElement.iTopY) && (y >= sGuiElement.iLowerY);
 }
 
+/**
+ * Converts one enum in the other. Needed since not all 'touch modes' are gestures.
+ * Private, only supports the required values
+ */
+int /*TouchScreenGuiObserver::gui_touch_mode_t*/ TouchScreenGuiHelper::toTouchMode(TouchScreenController::gesture_t eGesture) const {
+	switch(eGesture) {
+		case TouchScreenController::gesture_t::GESTURE_DOUBLE_CLICK:	return TouchScreenGuiObserver::gui_touch_mode_t::DOUBLE_CLICK;
+		case TouchScreenController::gesture_t::GESTURE_LONG_PRESS:		return TouchScreenGuiObserver::gui_touch_mode_t::LONG_PRESS;
+		case TouchScreenController::gesture_t::GESTURE_RIGHT:			return TouchScreenGuiObserver::gui_touch_mode_t::GESTURE_RIGHT;
+		case TouchScreenController::gesture_t::GESTURE_LEFT:			return TouchScreenGuiObserver::gui_touch_mode_t::GESTURE_LEFT;
+		case TouchScreenController::gesture_t::GESTURE_DOWN:			return TouchScreenGuiObserver::gui_touch_mode_t::GESTURE_DOWN;
+		case TouchScreenController::gesture_t::GESTURE_UP:				return TouchScreenGuiObserver::gui_touch_mode_t::GESTURE_UP;
+		case TouchScreenController::gesture_t::GESTURE_NONE:			[[fallthrough]];
+		case TouchScreenController::gesture_t::GESTURE_TOUCH_BUTTON:	[[fallthrough]];
+		default:
+			//should not never happen..
+			break;			
+	}
+	return TouchScreenGuiObserver::gui_touch_mode_t::CLICK;
+}
+
 //input: will retreive detected gestures, this is our input
 /*virtual*/ void TouchScreenGuiHelper::gestureNotification(int iGestureId, int x, int y, bool bCurrentlyPressed) {
 	//CST816_TOUCH_DEBUG_PRINTLN("TouchScreenGuiHelper::gestureNotification");
@@ -22,9 +43,14 @@ bool TouchScreenGuiHelper::isInGuiElement(int x, int y, const gui_element_t& sGu
 		CST816_TOUCH_DEBUG_PRINTLN("TouchScreenGuiHelper - nothing to report to");
 		return;	//nothing to report to
 	}
-	if (!((iGestureId == (int)TouchScreenController::gesture_t::GESTURE_DOUBLE_CLICK) ||
-		(  iGestureId == (int)TouchScreenController::GESTURE_LONG_PRESS))) {
-		return;	//we only care about the two above gestures.
+	if (!((iGestureId == (int)TouchScreenController::gesture_t::GESTURE_DOUBLE_CLICK)	||
+		  (iGestureId == (int)TouchScreenController::GESTURE_LONG_PRESS)				||
+		  (iGestureId == (int)TouchScreenController::GESTURE_RIGHT)						||
+		  (iGestureId == (int)TouchScreenController::GESTURE_LEFT)						||
+		  (iGestureId == (int)TouchScreenController::GESTURE_DOWN)						||
+		  (iGestureId == (int)TouchScreenController::GESTURE_UP)
+		  )) {
+		return;	//we only care about the above gestures
 	}
 
 	auto itPage = m_mGuiElements.find(m_uiCurrentPageId);
@@ -35,11 +61,11 @@ bool TouchScreenGuiHelper::isInGuiElement(int x, int y, const gui_element_t& sGu
 	page_gui_elements_t& vCurrentGuiElements = itPage->second;
 	for (auto it = vCurrentGuiElements.begin(); it != vCurrentGuiElements.end(); it++) {
 		if (isInGuiElement(x, y, *it)) {
-			TouchScreenGuiObserver::gui_touch_mode_t eTouchMode = TouchScreenGuiObserver::gui_touch_mode_t::DOUBLE_CLICK;
-			if (iGestureId == (int)TouchScreenController::GESTURE_LONG_PRESS) {
-				eTouchMode = TouchScreenGuiObserver::gui_touch_mode_t::LONG_PRESS;
-			}
-			
+			//TouchScreenGuiObserver::gui_touch_mode_t eTouchMode = TouchScreenGuiObserver::gui_touch_mode_t::DOUBLE_CLICK;
+			//if (iGestureId == (int)TouchScreenController::GESTURE_LONG_PRESS) {
+			//	eTouchMode = TouchScreenGuiObserver::gui_touch_mode_t::LONG_PRESS;
+			//}
+			const TouchScreenGuiObserver::gui_touch_mode_t eTouchMode = (TouchScreenGuiObserver::gui_touch_mode_t)toTouchMode((TouchScreenController::gesture_t)iGestureId);
 			m_pObserver->guiNotification(it->strGuiIdName, eTouchMode, m_uiCurrentPageId);
 			return;	//we do not support overlay constructions, so we're done
 		}

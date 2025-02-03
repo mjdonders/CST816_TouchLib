@@ -37,7 +37,8 @@ class TouchScreenGuiHelper: public TouchScreenObserver {
 		unsigned int 			m_uiSmallestGuiElement;
 		
 	private:
-		bool			isInGuiElement(int x, int y, const gui_element_t& sGuiElement) const;
+		bool										isInGuiElement(int x, int y, const gui_element_t& sGuiElement) const;
+		int /*TouchScreenGuiObserver::gui_touch_mode_t*/	toTouchMode(TouchScreenController::gesture_t eGesture) const;
 	
 	public:
 		//input: will retreive detected gestures, this is our input
