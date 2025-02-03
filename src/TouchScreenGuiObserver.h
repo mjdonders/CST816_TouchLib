@@ -14,7 +14,11 @@ class TouchScreenGuiObserver {
 		enum gui_touch_mode_t {
 			CLICK,
 			DOUBLE_CLICK,
-			LONG_PRESS
+			LONG_PRESS,
+			GESTURE_LEFT,
+			GESTURE_RIGHT,
+			GESTURE_UP,
+			GESTURE_DOWN			
 		};
 	
 	private:

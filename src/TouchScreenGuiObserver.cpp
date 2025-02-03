@@ -8,6 +8,10 @@ namespace MDO {
 		case CLICK:			return "click";
 		case DOUBLE_CLICK:	return "double click";
 		case LONG_PRESS:	return "long press";
+		case GESTURE_LEFT:	return "gesture left";
+		case GESTURE_RIGHT:	return "gesture right";
+		case GESTURE_UP:	return "gesture up";
+		case GESTURE_DOWN:	return "gesture down";
 	}
 	return "";
 }
